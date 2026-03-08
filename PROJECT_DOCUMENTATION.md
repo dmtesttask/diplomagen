@@ -48,7 +48,7 @@ The application is primarily aimed at the **Ukrainian market** and supports **Uk
 - Google Drive export (planned for v1.1).
 - Sending diplomas directly by email to participants.
 - Team or multi-user collaboration on a single project.
-- Payment / subscription billing.
+- Online payment gateways (balance is replenished via offline promo codes).
 - Mobile-first or native mobile application.
 - Support for formats other than PDF output (e.g., DOCX, PNG per diploma).
 
@@ -147,7 +147,23 @@ The application follows a **client–serverless-backend** architecture hosted on
 
 ---
 
-## 7. Data Models
+## 7. UI/UX Design and Design System
+
+The application must provide a modern, highly usable, and accessible interface. The following design principles and constraints apply:
+
+- **Component Library**: Use standard **Angular Material** components exclusively for all UI elements (buttons, dialogs, inputs, sidebars, select dropdowns, etc.) to ensure consistency, accessibility, and long-term maintainability.
+- **Theme Colors**: The primary theme must be based on the **Azure & Blue** color palette.
+- **Dark/Light Mode**: The application must fully support both dark and light modes. The user's system preference should be detected automatically (`prefers-color-scheme`), with an explicit toggle available in the navigation bar to override the setting.
+- **UI/UX Best Practices**: The design should follow established SaaS best practices: 
+  - Clear hierarchy and generous whitespace.
+  - Meaningful empty states with clear calls to action.
+  - Immediate visual feedback on actions (loading spinners, progress bars, success/error snackbars).
+  - Descriptive tooltips on icon-only buttons.
+  - A persistent, distraction-free environment for the core Canvas Editor (Epic 6).
+
+---
+
+## 8. Data Models
 
 ### User
 ```
@@ -156,7 +172,18 @@ User {
   email: string
   displayName: string
   photoURL: string
+  availableGenerations: number // Balance of available diploma generations
   createdAt: timestamp
+}
+
+### PromoCode (Top-level collection)
+```
+PromoCode {
+  id: string             // e.g. "PROMO-2026-XYZ"
+  generations: number    // How many generations it adds
+  isUsed: boolean
+  usedBy: string | null  // uid of the user who activated it
+  usedAt: timestamp | null
 }
 ```
 
@@ -223,7 +250,7 @@ GenerationJob {
 
 ---
 
-## 8. Epics, Stories, and Tasks
+## 9. Epics, Stories, and Tasks
 
 ---
 
@@ -240,7 +267,7 @@ Tasks:
 - [ ] Create Angular project with Angular CLI using latest stable version
 - [ ] Configure folder structure: `core/`, `features/`, `shared/`, `environments/`
 - [ ] Set up Angular Router with lazy-loaded feature modules
-- [ ] Configure Angular i18n with Ukrainian (default locale) and English
+- [ ] Configure Angular i18n with English (default locale) and Ukrainian
 - [ ] Add Angular Material or a chosen UI component library
 - [ ] Set up ESLint + Prettier for code style
 - [ ] Create environment files for `development` and `production`
@@ -281,7 +308,7 @@ Tasks:
 
 Tasks:
 - [ ] Set up a GitHub repository with branch protection on `main`
-- [ ] Create a GitHub Actions workflow to: lint, run unit tests, and build the Angular app on every pull request
+- [ ] Create a GitHub Actions workflow to: lint and build the Angular app on every pull request (Note: Unit and E2E testing are deferred to the final stage of the project)
 - [ ] Create a GitHub Actions workflow to deploy Angular to Firebase Hosting on merge to `main`
 - [ ] Create a GitHub Actions workflow to deploy Cloud Functions on merge to `main`
 - [ ] Store GCP service account key and Firebase config as GitHub Secrets
@@ -429,6 +456,7 @@ Tasks:
 - [ ] The Cloud Function uses SheetJS (`xlsx` library) to parse the first sheet of the file
 - [ ] Extract column headers from the first row
 - [ ] Extract all data rows into an array of objects keyed by header name
+- [ ] Calculate and store the longest string for each column to use as a placeholder in the editor
 - [ ] Save the extracted column headers list to `Project.excelColumns` in Firestore
 - [ ] Store the raw parsed data rows temporarily in Cloud Storage as a JSON file (referenced by the project) — this avoids re-uploading Excel on every generation
 - [ ] Return a preview of the first 5 rows to the frontend for user verification
@@ -485,7 +513,7 @@ Tasks:
 Tasks:
 - [ ] Show a left sidebar listing all defined diploma fields that have not yet been placed
 - [ ] Allow the user to drag a field from the sidebar and drop it onto the canvas (using Fabric.js text objects)
-- [ ] Each field rendered on canvas shows the field label as a placeholder text (e.g. "{First Name}")
+- [ ] Each field rendered on canvas shows the LONGEST string from the corresponding Excel column as placeholder text. This ensures the user centers/aligns based on maximum text width, allowing shorter lines to fit automatically.
 - [ ] The placed text object is movable (drag to reposition) and selectable
 - [ ] Double-click on a placed field to open the style panel
 - [ ] When a field is moved, update its `Field.position` (x, y) in the component state
@@ -551,12 +579,15 @@ Tasks:
 - [ ] Implement the `generateDiplomas` Cloud Function that:
   - Reads the `Project` document (template metadata, fields, styles, positions)
   - Reads the participant data JSON from Cloud Storage
+  - Verify `User.availableGenerations >= totalCount`. If insufficient, fail the job and warn the user.
   - For each row:
     - Load the template (PDF or rasterized image)
     - If template is PDF: use `pdf-lib` to load the PDF and draw text at configured positions
     - If template is JPEG/PNG: use `pdf-lib` to create a new PDF page, embed the image, then draw text on top
+    - For each field: if the Excel cell is empty, skip drawing this field completely.
     - Apply position (scaled from template pixels), font, size, color, bold, italic, alignment
     - Save the single PDF to a temporary buffer
+  - Deduct the successfully generated count from `User.availableGenerations`.
   - Bundle all individual PDFs into a ZIP using `archiver`
   - Upload the ZIP to Cloud Storage with a path like `zips/{projectId}/{jobId}.zip`
   - Update `GenerationJob.status = "done"` and set `zipStorageUrl`
@@ -660,7 +691,25 @@ Tasks:
 
 ---
 
-## 9. Out of Scope (Future Releases)
+### EPIC 10 — Balance and Promo Codes
+
+**Goal**: Allow users to activate offline promo codes to replenish their diploma generation balance. Generation is blocked if the balance is insufficient, though project preparation remains available.
+
+---
+
+**Story 10.1 — Activate Promo Code**
+> As an organizer, I want to enter a promo code so I can top up my generation balance.
+
+Tasks:
+- [ ] Add a "Balance" display in the user profile menu.
+- [ ] Create a "Top Up Balance" modal with a text input for the promo code.
+- [ ] Create Cloud Function `POST /users/activate-promo` that checks if the promo code exists in the `PromoCodes` collection and has `isUsed == false`.
+- [ ] Use Firestore transaction to mark the promo code as used and increment `User.availableGenerations`.
+- [ ] Show success UI and update the displayed balance.
+
+---
+
+## 10. Out of Scope (Future Releases)
 
 The following features are explicitly deferred and should not be implemented in the MVP:
 
@@ -672,7 +721,7 @@ The following features are explicitly deferred and should not be implemented in 
 | Custom font upload by the organizer | v1.2 |
 | Team collaboration / shared projects | v2.0 |
 | Diploma statistics / audit log (who downloaded, when) | v2.0 |
-| Subscription billing | v2.0 |
+| Online payment gateways (Stripe, etc.) | v2.0 |
 | Mobile layout for the editor | v2.0 |
 | QR code field type (verification QR on diploma) | v1.2 |
 | Diploma verification portal (public URL to verify diploma authenticity) | v2.0 |

@@ -371,12 +371,37 @@ Trigger batch diploma generation. Returns immediately with a job ID; generation 
 
 **Request body:** empty `{}`.
 
+**Validation:**
+- Check if user has enough `availableGenerations`. If not, return `402 Payment Required`.
+
 **Response `202`:**
 ```json
 {
   "jobId": "job_xyz789",
   "totalCount": 142,
   "status": "pending"
+}
+```
+
+---
+
+#### `POST /users/activate-promo`
+
+Activate a purchased promo code to increase generation balance.
+
+**Request body:**
+```json
+{
+  "code": "PROMO-12345"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "addedGenerations": 2000,
+  "newBalance": 2050
 }
 ```
 
@@ -442,11 +467,12 @@ Get a short-lived signed download URL for the generated ZIP archive.
 #### `/users/{uid}`
 ```
 {
-  uid:         string,       // same as the document ID
-  email:       string,
-  displayName: string,
-  photoURL:    string,
-  createdAt:   Timestamp
+  uid:                  string,       // same as the document ID
+  email:                string,
+  displayName:          string,
+  photoURL:             string,
+  availableGenerations: number,       // Decremented on generation, incremented by promo codes
+  createdAt:            Timestamp
 }
 ```
 
@@ -502,6 +528,17 @@ Get a short-lived signed download URL for the generated ZIP archive.
   errorMessage:     string | null,
   createdAt:        Timestamp,
   expiresAt:        Timestamp
+}
+```
+
+#### `/promoCodes/{codeId}` (Top-level collection for admin/backend use)
+```
+{
+  id:          string,       // e.g. "PROMO-12345"
+  generations: number,       // e.g. 2000
+  isUsed:      boolean,
+  usedBy:      string | null,
+  usedAt:      Timestamp | null
 }
 ```
 
@@ -697,6 +734,11 @@ if (align === "left")   adjustedX = pdfX_pt
 ```
 
 > **Important for the Fabric.js editor**: In the Fabric.js canvas, the `left` property of a text object refers to the **left edge** of the text bounding box. When alignment is `center` or `right`, the text is rendered differently. The stored `position.x` always represents the **anchor point** — which is the left edge for left-aligned text, the center for center-aligned, and the right edge for right-aligned text. This matches the adjustment logic above.
+
+### Step 4: Longest String Preview and Empty Values
+
+- **Editor Preview:** Instead of using the static column name (e.g. "{First Name}"), the frontend editor uses the longest string from that specific column in the uploaded Excel data as the placeholder. The user aligns this longest string on the canvas. Because alignment (left/center/right) is handled automatically, shorter strings will naturally fall into the correct bounds without overflowing.
+- **Empty Cells:** During backend PDF generation, if an Excel cell has no data (empty or whitespace only), the backend skips the `pdf-lib` draw operation for that field entirely. No placeholders or "undefined" strings are rendered.
 
 ### Summary Table
 

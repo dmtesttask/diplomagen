@@ -348,7 +348,7 @@ AngularFire v18+ uses the modular Firebase SDK and integrates natively with Angu
 | `@typescript-eslint/eslint-plugin` | `^8.0.0` | |
 | `prettier` | `^3.3.0` | |
 | `eslint-config-prettier` | `^9.0.0` | Disables ESLint rules that conflict with Prettier |
-| `jest` | `^29.7.0` | Unit testing. Preferred over Karma+Jasmine for Angular 21+ |
+| `jest` | `^29.7.0` | Unit testing (Note: test writing is deferred to the end of the project) |
 | `jest-preset-angular` | `^14.0.0` | Angular preset for Jest |
 | `@testing-library/angular` | `^17.0.0` | Component testing utilities |
 
@@ -443,7 +443,7 @@ Or add to `package.json`:
 | `@typescript-eslint/parser` | `^8.0.0` | |
 | `@typescript-eslint/eslint-plugin` | `^8.0.0` | |
 | `prettier` | `^3.3.0` | |
-| `jest` | `^29.7.0` | |
+| `jest` | `^29.7.0` | (Note: Backend tests are deferred to the end) |
 | `ts-jest` | `^29.2.0` | |
 | `firebase-functions-test` | `^3.3.0` | Official testing SDK for Cloud Functions |
 
