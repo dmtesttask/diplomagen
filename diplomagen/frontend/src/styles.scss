@@ -1,0 +1,176 @@
+@use '@angular/material' as mat;
+@use 'styles/variables' as vars;
+@use 'styles/typography' as typo;
+
+// ─── Google Fonts ───────────────────────────────────────────────────────────
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=PT+Serif:ital,wght@0,400;0,700;1,400;1,700&family=PT+Sans:ital,wght@0,400;0,700;1,400;1,700&family=Roboto:ital,wght@0,400;0,500;0,700;1,400&family=Open+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+@import url('https://fonts.googleapis.com/icon?family=Material+Icons');
+
+// ─── Angular Material Theme ──────────────────────────────────────────────────
+html {
+  @include mat.theme((
+    color: (
+      primary: mat.$azure-palette,
+      tertiary: mat.$blue-palette,
+    ),
+    typography: Inter,
+    density: 0,
+  ));
+}
+
+// Dark mode support — applied by ThemeService toggling class on <html>
+html.dark-mode {
+  color-scheme: dark;
+  @include mat.theme((
+    color: (
+      primary: mat.$azure-palette,
+      tertiary: mat.$blue-palette,
+      theme-type: dark,
+    ),
+    typography: Inter,
+    density: 0,
+  ));
+}
+
+// Auto dark mode from OS preference when no class override is set
+@media (prefers-color-scheme: dark) {
+  html:not(.light-mode):not(.dark-mode) {
+    color-scheme: dark;
+    @include mat.theme((
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+        theme-type: dark,
+      ),
+      typography: Inter,
+      density: 0,
+    ));
+  }
+}
+
+// ─── Global Reset & Base ─────────────────────────────────────────────────────
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: typo.$font-family-base;
+  font-size: typo.$text-base;
+  line-height: typo.$leading-normal;
+  background-color: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// ─── Scrollbar Styling ───────────────────────────────────────────────────────
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--mat-sys-outline-variant);
+  border-radius: vars.$radius-full;
+
+  &:hover {
+    background: var(--mat-sys-outline);
+  }
+}
+
+// ─── Utility Classes ─────────────────────────────────────────────────────────
+.full-width {
+  width: 100%;
+}
+
+.full-height {
+  height: 100%;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.flex-1 {
+  flex: 1;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.gap-2 {
+  gap: vars.$space-2;
+}
+
+.gap-4 {
+  gap: vars.$space-4;
+}
+
+.mt-4 {
+  margin-top: vars.$space-4;
+}
+
+.text-muted {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+// ─── Page Container ───────────────────────────────────────────────────────────
+.page-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: vars.$space-6 vars.$space-6;
+}
+
+// ─── Loading Overlay ─────────────────────────────────────────────────────────
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 9999;
+  backdrop-filter: blur(2px);
+}
+
+// ─── Material Overrides ───────────────────────────────────────────────────────
+
+// Snackbar success style
+.snackbar-success {
+  --mdc-snackbar-container-color: #388e3c;
+  --mdc-snackbar-supporting-text-color: white;
+}
+
+// Snackbar error style
+.snackbar-error {
+  --mdc-snackbar-container-color: #d32f2f;
+  --mdc-snackbar-supporting-text-color: white;
+}
+
+// Card hover elevation
+mat-card {
+  transition: box-shadow vars.$transition-base;
+}

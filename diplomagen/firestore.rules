@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users can only read and write their own user document
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+
+      // Users can only read and write their own projects
+      match /projects/{projectId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+
+        // Users can only read their own jobs (write is backend-only via Admin SDK)
+        match /jobs/{jobId} {
+          allow read: if request.auth != null && request.auth.uid == uid;
+          allow write: if false;
+        }
+      }
+    }
+
+    // Promo codes: read by any authenticated user (to check validity),
+    // write only by backend (Admin SDK, bypasses security rules).
+    match /promoCodes/{codeId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+  }
+}

@@ -1,0 +1,32 @@
+# Node
+node_modules/
+dist/
+.angular/
+
+# Environment files
+*.env
+*.env.local
+.env.*.local
+
+# Firebase
+.firebase/
+firebase-debug.log
+.firebaserc.local
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# TypeScript build artifacts
+*.js.map
+*.d.ts.map

@@ -1,0 +1,61 @@
+// Design tokens — DiplomaGen
+// Azure & Blue theme palette (aligned with Angular Material Azure/Blue)
+
+// Primary palette (Azure)
+$azure-50: #e8f4fd;
+$azure-100: #c5e3f9;
+$azure-200: #9ed0f5;
+$azure-300: #75bdf1;
+$azure-400: #52aeee;
+$azure-500: #2196f3; // Material Blue 500
+$azure-600: #1e88e5;
+$azure-700: #1976d2; // Primary
+$azure-800: #1565c0;
+$azure-900: #0d47a1;
+
+// Accent palette (Blue)
+$blue-accent: #448aff;
+$blue-accent-light: #82b1ff;
+$blue-accent-dark: #2962ff;
+
+// Neutral palette
+$gray-50: #fafafa;
+$gray-100: #f5f5f5;
+$gray-200: #eeeeee;
+$gray-300: #e0e0e0;
+$gray-400: #bdbdbd;
+$gray-500: #9e9e9e;
+$gray-600: #757575;
+$gray-700: #616161;
+$gray-800: #424242;
+$gray-900: #212121;
+
+// Spacing scale
+$space-1: 4px;
+$space-2: 8px;
+$space-3: 12px;
+$space-4: 16px;
+$space-5: 20px;
+$space-6: 24px;
+$space-8: 32px;
+$space-10: 40px;
+$space-12: 48px;
+$space-16: 64px;
+
+// Border radius
+$radius-sm: 4px;
+$radius-md: 8px;
+$radius-lg: 12px;
+$radius-xl: 16px;
+$radius-full: 9999px;
+
+// Shadows
+$shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+$shadow-md: 0 2px 8px rgba(0, 0, 0, 0.12);
+$shadow-lg: 0 4px 20px rgba(0, 0, 0, 0.15);
+$shadow-xl: 0 8px 40px rgba(0, 0, 0, 0.2);
+
+// Transitions
+$transition-fast: 150ms ease;
+$transition-base: 250ms ease;
+$transition-slow: 400ms ease;
