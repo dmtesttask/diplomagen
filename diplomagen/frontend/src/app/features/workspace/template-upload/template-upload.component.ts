@@ -2,6 +2,7 @@ import {
   Component,
   EventEmitter,
   Input,
+  OnInit,
   Output,
   inject,
   signal,
@@ -11,6 +12,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { Storage, ref as storageRef, getDownloadURL } from '@angular/fire/storage';
 import { ProjectService } from '../../projects/project.service';
 import type { TemplateMetadata } from '../../../../../../shared/src';
 
@@ -53,8 +55,13 @@ function getExtension(mimeType: string): string {
             <img [src]="previewUrl()" alt="Template preview" class="template-preview" />
           } @else {
             <div class="pdf-preview">
-              <mat-icon class="pdf-icon">picture_as_pdf</mat-icon>
-              <span>PDF Template</span>
+              @if (template()?.mimeType === 'application/pdf') {
+                <mat-icon class="pdf-icon">picture_as_pdf</mat-icon>
+                <span>PDF Template</span>
+              } @else {
+                <mat-icon class="pdf-icon">image</mat-icon>
+                <span>Loading preview…</span>
+              }
             </div>
           }
           <div class="template-info">
@@ -262,18 +269,34 @@ function getExtension(mimeType: string): string {
     }
   `],
 })
-export class TemplateUploadComponent {
+export class TemplateUploadComponent implements OnInit {
   @Input({ required: true }) projectId!: string;
   @Input() template: (() => TemplateMetadata | null) = () => null;
   @Output() templateUploaded = new EventEmitter<TemplateMetadata>();
 
   private readonly projectService = inject(ProjectService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly storage = inject(Storage);
 
   readonly isDragOver = signal(false);
   readonly isUploading = signal(false);
   readonly uploadProgress = signal(0);
   readonly previewUrl = signal<string | null>(null);
+
+  ngOnInit(): void {
+    // When navigating back to a project that already has a template, load
+    // the persistent download URL so the preview is shown immediately.
+    const t = this.template();
+    if (t && t.mimeType !== 'application/pdf') {
+      this.loadStoragePreview(t.storageUrl);
+    }
+  }
+
+  private loadStoragePreview(gcsPath: string): void {
+    getDownloadURL(storageRef(this.storage, gcsPath))
+      .then(url => this.previewUrl.set(url))
+      .catch(() => { /* storage not reachable — preview stays hidden */ });
+  }
 
   // ─── Drag & Drop ───────────────────────────────────────────────────────────
 
@@ -373,6 +396,11 @@ export class TemplateUploadComponent {
     this.uploadProgress.set(100);
     this.templateUploaded.emit(template);
     this.snackBar.open('Template uploaded successfully!', undefined, { duration: 3000 });
+    // Replace the ephemeral createObjectURL blob with a persistent Storage URL
+    // so the preview survives navigation and page reloads.
+    if (template.mimeType !== 'application/pdf') {
+      this.loadStoragePreview(template.storageUrl);
+    }
   }
 
   private onUploadError(msg: string): void {

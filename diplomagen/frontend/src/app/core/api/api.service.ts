@@ -45,4 +45,9 @@ export class ApiService {
       observe: 'events',
     });
   }
+
+  /** GET that returns raw Blob bytes (used for proxied template content) */
+  getBlob(path: string) {
+    return this.http.get(`${this.baseUrl}${path}`, { responseType: 'blob' });
+  }
 }

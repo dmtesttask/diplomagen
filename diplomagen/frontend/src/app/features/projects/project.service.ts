@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { HttpEventType } from '@angular/common/http';
 import { ApiService } from '../../core/api/api.service';
-import type { Project, ProjectListItem, TemplateMetadata } from '../../../../../shared/src';
+import type { Project, ProjectListItem, TemplateMetadata, Field } from '../../../../../shared/src';
 
 export interface CreateProjectDto {
   name: string;
@@ -12,6 +12,17 @@ export interface UploadUrlResponse {
   uploadUrl: string | null;
   gcsPath: string;
   useDirectUpload: boolean;
+}
+
+export interface ExcelUploadResult {
+  columns: string[];
+  totalRows: number;
+  preview: Record<string, string>[];
+}
+
+export interface TemplateSignedUrlResponse {
+  signedUrl: string;
+  expiresAt: string;
 }
 
 @Injectable({
@@ -69,6 +80,32 @@ export class ProjectService {
   /** Step 3: Confirm upload and let backend resolve dimensions */
   confirmTemplate(projectId: string, gcsPath: string, mimeType: string): Observable<TemplateMetadata> {
     return this.api.post<TemplateMetadata>(`/projects/${projectId}/template`, { gcsPath, mimeType });
+  }
+
+  /** Upload an Excel file and parse participants data */
+  uploadExcel(projectId: string, file: File): Observable<ExcelUploadResult> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.api.postFormData<ExcelUploadResult>(`/projects/${projectId}/excel`, formData);
+  }
+
+  /** Bulk-replace the field list for a project */
+  updateFields(projectId: string, fields: Field[]): Observable<Project> {
+    return this.api.patch<Project>(`/projects/${projectId}/fields`, { fields });
+  }
+
+  /** Get a short-lived signed URL for the project's template file */
+  getTemplateSignedUrl(projectId: string): Observable<TemplateSignedUrlResponse> {
+    return this.api.get<TemplateSignedUrlResponse>(`/projects/${projectId}/template/signed-url`);
+  }
+
+  /**
+   * Download the template file through the API proxy.
+   * Use this in the editor — works in both emulator and production
+   * without requiring a separate authenticated Storage request.
+   */
+  getTemplateContent(projectId: string): Observable<Blob> {
+    return this.api.getBlob(`/projects/${projectId}/template/content`);
   }
 }
 

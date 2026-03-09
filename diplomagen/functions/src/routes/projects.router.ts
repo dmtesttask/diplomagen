@@ -4,9 +4,11 @@ import { Timestamp } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import sharp from 'sharp';
 import { PDFDocument } from 'pdf-lib';
+import { Readable } from 'stream';
+import * as XLSX from 'xlsx';
 import { createError } from '../middleware/error-handler';
 import type { AuthedRequest } from '../middleware/authenticate';
-import { generateUploadSignedUrl, uploadBuffer, downloadFileAsBuffer, deleteFile, IS_EMULATOR } from '../services/storage.service';
+import { generateUploadSignedUrl, generateDownloadSignedUrl, uploadBuffer, downloadFileAsBuffer, deleteFile, IS_EMULATOR } from '../services/storage.service';
 import busboy from 'busboy';
 
 interface TemplateMetadata {
@@ -47,8 +49,8 @@ projectsRouter.get('/', async (req: Request, res: Response, next: NextFunction) 
       .get();
 
     const projects = snapshot.docs.map((doc) => ({
-      id: doc.id,
       ...doc.data(),
+      id: doc.id,
     }));
 
     res.json({ projects });
@@ -67,7 +69,8 @@ projectsRouter.get('/:id', async (req: Request, res: Response, next: NextFunctio
       return next(createError(404, 'Project not found.', 'NOT_FOUND'));
     }
 
-    res.json({ id: snap.id, ...snap.data() });
+    // id comes last so it can never be overridden by document-stored data
+    res.json({ ...snap.data(), id: snap.id });
   } catch (err) {
     next(err);
   }
@@ -95,7 +98,7 @@ projectsRouter.post('/', async (req: Request, res: Response, next: NextFunction)
     };
 
     await docRef.set(project);
-    res.status(201).json({ id: docRef.id, ...project });
+    res.status(201).json({ ...project, id: docRef.id });
   } catch (err) {
     next(err);
   }
@@ -122,7 +125,7 @@ projectsRouter.patch('/:id', async (req: Request, res: Response, next: NextFunct
     await ref.update(updates);
 
     const updated = await ref.get();
-    res.json({ id: updated.id, ...updated.data() });
+    res.json({ ...updated.data(), id: updated.id });
   } catch (err) {
     next(err);
   }
@@ -221,7 +224,61 @@ projectsRouter.post('/:id/upload', (req: Request, res: Response, next: NextFunct
   });
 
   bb.on('error', next);
-  req.pipe(bb);
+
+  // Firebase Functions pre-buffers the request body (available as req.rawBody).
+  // Piping `req` directly fails because the stream is already fully consumed by
+  // the time the route handler runs. Use rawBody when present; fall back to
+  // piping the live stream in plain Node environments (e.g. integration tests).
+  const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+  if (rawBody) {
+    const readable = new Readable();
+    readable.push(rawBody);
+    readable.push(null);
+    readable.pipe(bb);
+  } else {
+    req.pipe(bb);
+  }
+});
+
+// ─── GET /projects/:id/template/signed-url ──────────────────────────────────
+projectsRouter.get('/:id/template/signed-url', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { uid } = req as AuthedRequest;
+    const snap = await projectRef(uid, req.params['id']).get();
+    if (!snap.exists) return next(createError(404, 'Project not found.', 'NOT_FOUND'));
+
+    const data = snap.data() as { template?: TemplateMetadata | null };
+    if (!data?.template?.storageUrl) {
+      return next(createError(404, 'No template uploaded.', 'NOT_FOUND'));
+    }
+
+    const signedUrl = await generateDownloadSignedUrl(data.template.storageUrl);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    res.json({ signedUrl, expiresAt });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── GET /projects/:id/template/content (image proxy — works in emulator & prod) ─────
+projectsRouter.get('/:id/template/content', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { uid } = req as AuthedRequest;
+    const snap = await projectRef(uid, req.params['id']).get();
+    if (!snap.exists) return next(createError(404, 'Project not found.', 'NOT_FOUND'));
+
+    const data = snap.data() as { template?: TemplateMetadata | null };
+    if (!data?.template?.storageUrl) {
+      return next(createError(404, 'No template uploaded.', 'NOT_FOUND'));
+    }
+
+    const buffer = await downloadFileAsBuffer(data.template.storageUrl);
+    res.set('Content-Type', data.template.mimeType);
+    res.set('Cache-Control', 'private, max-age=3600');
+    res.send(buffer);
+  } catch (err) {
+    next(err);
+  }
 });
 
 // ─── POST /projects/:id/template ─────────────────────────────────────────────
@@ -278,6 +335,133 @@ projectsRouter.post('/:id/template', async (req: Request, res: Response, next: N
     });
 
     res.json(template);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── POST /projects/:id/excel ─────────────────────────────────────────────────
+projectsRouter.post('/:id/excel', (req: Request, res: Response, next: NextFunction) => {
+  const { uid } = req as AuthedRequest;
+  const projectId = req.params['id'];
+
+  const chunks: Buffer[] = [];
+  let validationFailed = false;
+
+  const bb = busboy({ headers: req.headers, limits: { fileSize: 10 * 1024 * 1024 } });
+
+  bb.on('file', (_fieldName: string, file: NodeJS.ReadableStream, info: { filename: string; mimeType: string }) => {
+    const { filename } = info;
+    if (!/\.(xlsx|xls)$/i.test(filename)) {
+      validationFailed = true;
+      next(createError(422, 'Only .xlsx and .xls files are accepted.', 'VALIDATION_ERROR'));
+      return;
+    }
+    (file as NodeJS.ReadableStream & { on: (e: string, cb: (d: Buffer) => void) => void })
+      .on('data', (chunk: Buffer) => chunks.push(chunk));
+    (file as NodeJS.ReadableStream & { on: (e: string, cb: () => void) => void })
+      .on('limit', () => {
+        validationFailed = true;
+        next(createError(422, 'Excel file must be ≤ 10 MB.', 'VALIDATION_ERROR'));
+      });
+  });
+
+  bb.on('finish', async () => {
+    if (validationFailed) return;
+    try {
+      const snap = await projectRef(uid, projectId).get();
+      if (!snap.exists) return next(createError(404, 'Project not found.', 'NOT_FOUND'));
+
+      const buffer = Buffer.concat(chunks);
+      if (buffer.length === 0) return next(createError(422, 'No file received.', 'VALIDATION_ERROR'));
+
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) return next(createError(422, 'Excel file has no sheets.', 'VALIDATION_ERROR'));
+
+      const rows = XLSX.utils.sheet_to_json<Record<string, string>>(
+        workbook.Sheets[sheetName],
+        { defval: '' },
+      );
+      if (rows.length === 0) return next(createError(422, 'Excel file has no data rows.', 'VALIDATION_ERROR'));
+
+      const columns: string[] = Object.keys(rows[0]);
+      const totalRows: number = rows.length;
+      const preview: Record<string, string>[] = rows.slice(0, 5) as Record<string, string>[];
+
+      const dataPath = `data/${uid}/${projectId}/participants.json`;
+      await uploadBuffer(dataPath, Buffer.from(JSON.stringify(rows), 'utf-8'), 'application/json');
+
+      // Reset excelColumn mapping on all existing fields
+      const projectData = snap.data() as { fields?: Array<Record<string, unknown>> };
+      const updatedFields = (projectData.fields ?? []).map((f) => ({ ...f, excelColumn: null }));
+
+      await projectRef(uid, projectId).update({
+        excelColumns: columns,
+        excelDataPath: dataPath,
+        totalRows,
+        fields: updatedFields,
+        updatedAt: Timestamp.now(),
+      });
+
+      res.json({ columns, totalRows, preview });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  bb.on('error', next);
+
+  const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+  if (rawBody) {
+    const readable = new Readable();
+    readable.push(rawBody);
+    readable.push(null);
+    readable.pipe(bb);
+  } else {
+    req.pipe(bb);
+  }
+});
+
+// ─── PATCH /projects/:id/fields ───────────────────────────────────────────────
+const FieldStyleSchema = z.object({
+  fontFamily: z.enum(['PTSerif', 'PTSans', 'Roboto', 'OpenSans', 'TimesNewRoman']),
+  fontSize: z.number().min(1).max(500),
+  color: z.string(),
+  bold: z.boolean(),
+  italic: z.boolean(),
+  align: z.enum(['left', 'center', 'right']),
+});
+
+const FieldSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1).max(100),
+  excelColumn: z.string().nullable().optional(),
+  staticValue: z.string().nullable().optional(),
+  position: z.object({ x: z.number(), y: z.number() }).nullable().optional(),
+  style: FieldStyleSchema,
+});
+
+const UpdateFieldsSchema = z.object({
+  fields: z.array(FieldSchema).max(20),
+});
+
+projectsRouter.patch('/:id/fields', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { uid } = req as AuthedRequest;
+    const parsed = UpdateFieldsSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return next(createError(400, parsed.error.message, 'VALIDATION_ERROR'));
+    }
+
+    const ref = projectRef(uid, req.params['id']);
+    const snap = await ref.get();
+    if (!snap.exists) return next(createError(404, 'Project not found.', 'NOT_FOUND'));
+
+    await ref.update({ fields: parsed.data.fields, updatedAt: Timestamp.now() });
+
+    const updated = await ref.get();
+    res.json({ ...updated.data(), id: updated.id });
   } catch (err) {
     next(err);
   }

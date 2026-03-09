@@ -1,11 +1,27 @@
+import * as admin from 'firebase-admin';
 import { Storage } from '@google-cloud/storage';
 
-const storage = new Storage();
-
-export const BUCKET_NAME = process.env['STORAGE_BUCKET'] ?? `${process.env['GCLOUD_PROJECT']}.firebasestorage.app`;
+export const BUCKET_NAME =
+  process.env['STORAGE_BUCKET'] ??
+  `${process.env['GCLOUD_PROJECT']}.firebasestorage.app`;
 
 /** True when running inside the Firebase Emulator Suite */
 export const IS_EMULATOR = !!process.env['FIREBASE_STORAGE_EMULATOR_HOST'];
+
+/**
+ * Returns the GCS bucket, routing to the Storage emulator when running locally.
+ * admin.storage() automatically honours FIREBASE_STORAGE_EMULATOR_HOST, while
+ * `new Storage()` (the raw GCP client) does not.
+ */
+function getBucket() {
+  return admin.storage().bucket(BUCKET_NAME);
+}
+
+/**
+ * Raw @google-cloud/storage client — only used for V4 signed URLs in production
+ * (the Admin SDK does not expose signed URL generation directly).
+ */
+const gcsClient = new Storage();
 
 /**
  * Generates a V4 signed URL so the client can upload directly to GCS.
@@ -15,7 +31,7 @@ export async function generateUploadSignedUrl(
   gcsPath: string,
   mimeType: string,
 ): Promise<string> {
-  const [url] = await storage
+  const [url] = await gcsClient
     .bucket(BUCKET_NAME)
     .file(gcsPath)
     .getSignedUrl({
@@ -36,7 +52,7 @@ export async function uploadBuffer(
   buffer: Buffer,
   mimeType: string,
 ): Promise<void> {
-  await storage.bucket(BUCKET_NAME).file(gcsPath).save(buffer, {
+  await getBucket().file(gcsPath).save(buffer, {
     contentType: mimeType,
     resumable: false,
   });
@@ -46,8 +62,31 @@ export async function uploadBuffer(
  * Downloads a file from GCS into a Buffer for processing.
  */
 export async function downloadFileAsBuffer(gcsPath: string): Promise<Buffer> {
-  const [buffer] = await storage.bucket(BUCKET_NAME).file(gcsPath).download();
+  const [buffer] = await getBucket().file(gcsPath).download();
   return buffer;
+}
+
+/**
+ * Generates a V4 signed URL so the client can download a file from GCS.
+ * In the emulator, returns a plain emulator URL instead.
+ */
+export async function generateDownloadSignedUrl(
+  gcsPath: string,
+  expiresInMs = 60 * 60 * 1000, // 1 hour
+): Promise<string> {
+  if (IS_EMULATOR) {
+    const encoded = encodeURIComponent(gcsPath);
+    return `http://localhost:9199/v0/b/${BUCKET_NAME}/o/${encoded}?alt=media`;
+  }
+  const [url] = await gcsClient
+    .bucket(BUCKET_NAME)
+    .file(gcsPath)
+    .getSignedUrl({
+      version: 'v4',
+      action: 'read',
+      expires: Date.now() + expiresInMs,
+    });
+  return url;
 }
 
 /**
@@ -55,7 +94,7 @@ export async function downloadFileAsBuffer(gcsPath: string): Promise<Buffer> {
  */
 export async function deleteFile(gcsPath: string): Promise<void> {
   try {
-    await storage.bucket(BUCKET_NAME).file(gcsPath).delete();
+    await getBucket().file(gcsPath).delete();
   } catch (err: unknown) {
     // Ignore "File not found" errors
     const code = (err as { code?: number }).code;
