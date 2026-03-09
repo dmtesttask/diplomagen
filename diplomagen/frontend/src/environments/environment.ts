@@ -1,12 +1,14 @@
 export const environment = {
   production: false,
   firebase: {
-    apiKey: 'TODO_YOUR_API_KEY',
-    authDomain: 'TODO_YOUR_PROJECT_ID.firebaseapp.com',
-    projectId: 'TODO_YOUR_PROJECT_ID',
-    storageBucket: 'TODO_YOUR_PROJECT_ID.firebasestorage.app',
-    messagingSenderId: 'TODO_YOUR_MESSAGING_SENDER_ID',
-    appId: 'TODO_YOUR_APP_ID',
+    apiKey: "AIzaSyAF_1YAS38LkreEhsJhrzpRygAaXyUtZKQ",
+    authDomain: "diplomagen-dev.firebaseapp.com",
+    projectId: "diplomagen-dev",
+    storageBucket: "diplomagen-dev.firebasestorage.app",
+    messagingSenderId: "795759968041",
+    appId: "1:795759968041:web:9821a9d330c341508f8138",
+    measurementId: "G-LB249GTJ5J"
   },
-  apiBaseUrl: 'http://localhost:5001/TODO_YOUR_PROJECT_ID/us-central1/api',
+  apiBaseUrl: 'http://localhost:5001/diplomagen-dev/europe-central2/api',
 };
+

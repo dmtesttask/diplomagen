@@ -39,7 +39,7 @@ import { MatIconModule } from '@angular/material/icon';
           id="project-name-input"
           aria-label="Project name"
         />
-        <mat-hint align="end">{{ nameControl.value?.length ?? 0 }}/100</mat-hint>
+        <mat-hint align="end">{{ nameControl.value.length || 0 }}/100</mat-hint>
 
         @if (nameControl.hasError('required') && nameControl.touched) {
           <mat-error>Project name is required.</mat-error>
