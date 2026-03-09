@@ -389,6 +389,17 @@ projectsRouter.post('/:id/excel', (req: Request, res: Response, next: NextFuncti
       const totalRows: number = rows.length;
       const preview: Record<string, string>[] = rows.slice(0, 5) as Record<string, string>[];
 
+      // Compute the longest value per column for editor canvas preview
+      const columnMaxValues: Record<string, string> = {};
+      for (const col of columns) {
+        let longest = '';
+        for (const row of rows as Record<string, string>[]) {
+          const val = String(row[col] ?? '');
+          if (val.length > longest.length) longest = val;
+        }
+        columnMaxValues[col] = longest;
+      }
+
       const dataPath = `data/${uid}/${projectId}/participants.json`;
       await uploadBuffer(dataPath, Buffer.from(JSON.stringify(rows), 'utf-8'), 'application/json');
 
@@ -400,6 +411,7 @@ projectsRouter.post('/:id/excel', (req: Request, res: Response, next: NextFuncti
         excelColumns: columns,
         excelDataPath: dataPath,
         totalRows,
+        columnMaxValues,
         fields: updatedFields,
         updatedAt: Timestamp.now(),
       });

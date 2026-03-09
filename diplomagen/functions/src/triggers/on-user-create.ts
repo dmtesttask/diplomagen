@@ -13,7 +13,7 @@ export async function handleUserCreate(user: UserRecord): Promise<void> {
       email: user.email ?? null,
       displayName: user.displayName ?? null,
       photoURL: user.photoURL ?? null,
-      balance: 0,
+      availableGenerations: 1000, // TODO: set to 0 and require promo code activation before launch
       createdAt: Timestamp.now(),
       updatedAt: Timestamp.now(),
     });

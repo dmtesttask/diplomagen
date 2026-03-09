@@ -1,4 +1,4 @@
-import { Component, inject, signal, computed } from '@angular/core';
+import { Component, OnDestroy, inject, signal, computed } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { AsyncPipe } from '@angular/common';
 import { MatToolbarModule } from '@angular/material/toolbar';
@@ -9,8 +9,13 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatChipsModule } from '@angular/material/chips';
 
+import { Firestore, doc, docData } from '@angular/fire/firestore';
+import { Auth } from '@angular/fire/auth';
+import { user } from '@angular/fire/auth';
+import { Subject, switchMap, of, takeUntil } from 'rxjs';
 import { AuthService } from '../../core/auth/auth.service';
 import { ThemeService } from '../../core/auth/theme.service';
+import type { User } from '../../../../../shared/src';
 
 @Component({
   selector: 'app-navbar',
@@ -156,15 +161,37 @@ import { ThemeService } from '../../core/auth/theme.service';
     }
   `],
 })
-export class NavbarComponent {
+export class NavbarComponent implements OnDestroy {
   private readonly router = inject(Router);
+  private readonly auth = inject(Auth);
+  private readonly firestore = inject(Firestore);
+  private readonly destroy$ = new Subject<void>();
 
   protected readonly authService = inject(AuthService);
   protected readonly themeService = inject(ThemeService);
 
   readonly currentUser$ = this.authService.currentUser$;
   readonly isDark = computed(() => this.themeService.isDark);
-  readonly availableGenerations = signal(0); // Will be loaded from Firestore in Epic 10
+  readonly availableGenerations = signal(0);
+
+  constructor() {
+    // Subscribe to the Firestore user document for live balance updates
+    user(this.auth).pipe(
+      switchMap((u) =>
+        u
+          ? docData<User>(doc(this.firestore, `users/${u.uid}`) as Parameters<typeof docData<User>>[0])
+          : of(undefined),
+      ),
+      takeUntil(this.destroy$),
+    ).subscribe((userData) => {
+      this.availableGenerations.set(userData?.availableGenerations ?? 0);
+    });
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
 
   toggleTheme(): void {
     this.themeService.toggle();

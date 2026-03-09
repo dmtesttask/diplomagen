@@ -41,6 +41,8 @@ export interface Project {
   excelColumns: string[];
   excelDataPath: string | null;
   totalRows: number | null;
+  /** Longest string value found in each column (for editor preview) */
+  columnMaxValues: Record<string, string> | null;
   fields: Field[];
 }
 

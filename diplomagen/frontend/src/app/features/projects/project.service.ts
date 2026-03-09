@@ -1,8 +1,28 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { HttpEventType } from '@angular/common/http';
 import { ApiService } from '../../core/api/api.service';
 import type { Project, ProjectListItem, TemplateMetadata, Field } from '../../../../../shared/src';
+
+/**
+ * Firestore Timestamps serialize to JSON as { _seconds, _nanoseconds }.
+ * Convert any date-like value (Timestamp object, ISO string, or Date) to a Date.
+ */
+function normalizeDate(raw: unknown): Date {
+  if (raw instanceof Date) return raw;
+  if (typeof raw === 'string' || typeof raw === 'number') return new Date(raw);
+  // Firestore Timestamp JSON: { _seconds: number, _nanoseconds: number }
+  const ts = raw as Record<string, number>;
+  if (ts && typeof ts['_seconds'] === 'number') return new Date(ts['_seconds'] * 1000);
+  // Firestore Timestamp JSON (alternate field names used by some SDK versions)
+  if (ts && typeof ts['seconds'] === 'number') return new Date(ts['seconds'] * 1000);
+  return new Date(String(raw));
+}
+
+function normalizeDates<T extends { createdAt: unknown; updatedAt: unknown }>(item: T): T {
+  return { ...item, createdAt: normalizeDate(item.createdAt), updatedAt: normalizeDate(item.updatedAt) };
+}
 
 export interface CreateProjectDto {
   name: string;
@@ -33,22 +53,24 @@ export class ProjectService {
 
   /** Fetch all projects for the currently authenticated user */
   getUserProjects(): Observable<{ projects: ProjectListItem[] }> {
-    return this.api.get<{ projects: ProjectListItem[] }>('/projects');
+    return this.api.get<{ projects: ProjectListItem[] }>('/projects').pipe(
+      map(({ projects }) => ({ projects: projects.map(normalizeDates) })),
+    );
   }
 
   /** Fetch a single project by ID */
   getProject(projectId: string): Observable<Project> {
-    return this.api.get<Project>(`/projects/${projectId}`);
+    return this.api.get<Project>(`/projects/${projectId}`).pipe(map(normalizeDates));
   }
 
   /** Create a new project */
   createProject(dto: CreateProjectDto): Observable<Project> {
-    return this.api.post<Project>('/projects', dto);
+    return this.api.post<Project>('/projects', dto).pipe(map(normalizeDates));
   }
 
   /** Rename an existing project */
   renameProject(projectId: string, name: string): Observable<Project> {
-    return this.api.patch<Project>(`/projects/${projectId}`, { name });
+    return this.api.patch<Project>(`/projects/${projectId}`, { name }).pipe(map(normalizeDates));
   }
 
   /** Delete a project and all its associated files */
@@ -91,7 +113,7 @@ export class ProjectService {
 
   /** Bulk-replace the field list for a project */
   updateFields(projectId: string, fields: Field[]): Observable<Project> {
-    return this.api.patch<Project>(`/projects/${projectId}/fields`, { fields });
+    return this.api.patch<Project>(`/projects/${projectId}/fields`, { fields }).pipe(map(normalizeDates));
   }
 
   /** Get a short-lived signed URL for the project's template file */

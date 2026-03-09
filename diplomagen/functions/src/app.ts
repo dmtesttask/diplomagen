@@ -3,6 +3,7 @@ import cors from 'cors';
 import { authenticate } from './middleware/authenticate';
 import { errorHandler } from './middleware/error-handler';
 import { projectsRouter } from './routes/projects.router';
+import { generateRouter } from './routes/generate.router';
 
 export const app = express();
 
@@ -25,6 +26,7 @@ app.get('/health', (_req, res) => {
 // ─── Authenticated Routes ─────────────────────────────────────────────────────
 app.use(authenticate);
 app.use('/projects', projectsRouter);
+app.use('/projects', generateRouter);
 
 // ─── Error Handler (must be last) ────────────────────────────────────────────
 app.use(errorHandler);

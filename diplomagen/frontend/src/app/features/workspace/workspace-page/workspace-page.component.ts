@@ -8,6 +8,7 @@ import { ProjectService } from '../../projects/project.service';
 import { TemplateUploadComponent } from '../template-upload/template-upload.component';
 import { ExcelUploadComponent } from '../excel-upload/excel-upload.component';
 import { FieldsManagerComponent } from '../fields-manager/fields-manager.component';
+import { GenerationPanelComponent } from '../../generation/generation-panel/generation-panel.component';
 import type { Project, TemplateMetadata, Field } from '../../../../../../shared/src';
 import type { ExcelUploadResult } from '../../projects/project.service';
 
@@ -21,6 +22,7 @@ import type { ExcelUploadResult } from '../../projects/project.service';
     TemplateUploadComponent,
     ExcelUploadComponent,
     FieldsManagerComponent,
+    GenerationPanelComponent,
   ],
   template: `
     <div class="page-container">
@@ -72,6 +74,11 @@ import type { ExcelUploadResult } from '../../projects/project.service';
               [excelColumns]="project()!.excelColumns"
               (fieldsChanged)="onFieldsChanged($event)"
             />
+          }
+
+          <!-- Step 4: Generate (always shown so the user sees what's missing) -->
+          @if (project()!.template) {
+            <app-generation-panel [project]="project()!" />
           }
         </div>
       }

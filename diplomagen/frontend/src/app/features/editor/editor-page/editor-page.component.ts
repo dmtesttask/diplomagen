@@ -645,8 +645,9 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
   // ─── Field object management ──────────────────────────────────────────────────
   /** Add (or place at center) a field on the canvas */
   private addFieldToCanvas(field: Field, center: boolean): void {
+    const columnMaxValues = this.project()?.columnMaxValues;
     const label = field.excelColumn
-      ? `{ ${field.excelColumn} }`
+      ? (columnMaxValues?.[field.excelColumn] || `{ ${field.excelColumn} }`)
       : (field.staticValue ?? field.label);
 
     const left = center
