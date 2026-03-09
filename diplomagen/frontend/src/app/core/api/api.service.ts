@@ -30,6 +30,11 @@ export class ApiService {
     return this.http.delete<T>(`${this.baseUrl}${path}`);
   }
 
+  /** POST with FormData (no Content-Type header — browser sets boundary automatically) */
+  postFormData<T>(path: string, body: FormData) {
+    return this.http.post<T>(`${this.baseUrl}${path}`, body);
+  }
+
   /** Direct PUT to a URL (used for GCS signed upload URLs) */
   putDirect(url: string, body: Blob | File, contentType: string) {
     return this.http.put(url, body, {

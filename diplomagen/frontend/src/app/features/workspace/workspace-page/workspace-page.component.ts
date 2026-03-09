@@ -5,12 +5,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ProjectService } from '../../projects/project.service';
-import type { Project } from '../../../../../../shared/src';
+import { TemplateUploadComponent } from '../template-upload/template-upload.component';
+import type { Project, TemplateMetadata } from '../../../../../../shared/src';
 
 @Component({
   selector: 'app-workspace-page',
   standalone: true,
-  imports: [MatButtonModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [MatButtonModule, MatIconModule, MatProgressSpinnerModule, TemplateUploadComponent],
   template: `
     <div class="page-container">
       @if (isLoading()) {
@@ -28,15 +29,19 @@ import type { Project } from '../../../../../../shared/src';
             color="primary"
             (click)="openEditor()"
             [disabled]="!project()!.template"
+            aria-label="Open canvas editor"
           >
             <mat-icon>design_services</mat-icon>
             Open Editor
           </button>
         </div>
 
-        <div class="coming-soon">
-          <mat-icon>construction</mat-icon>
-          <p>Template upload, Excel upload and field mapping coming in the next implementation phase.</p>
+        <div class="workspace-content">
+          <app-template-upload
+            [projectId]="project()!.id"
+            [template]="getTemplate"
+            (templateUploaded)="onTemplateUploaded($event)"
+          />
         </div>
       }
     </div>
@@ -67,30 +72,10 @@ import type { Project } from '../../../../../../shared/src';
       color: var(--mat-sys-on-surface-variant);
     }
 
-    .coming-soon {
+    .workspace-content {
       display: flex;
       flex-direction: column;
-      align-items: center;
-      gap: 16px;
-      padding: 60px;
-      text-align: center;
-      background: var(--mat-sys-surface-container);
-      border-radius: 16px;
-      border: 1px dashed var(--mat-sys-outline-variant);
-
-      mat-icon {
-        font-size: 48px;
-        width: 48px;
-        height: 48px;
-        color: var(--mat-sys-on-surface-variant);
-        opacity: 0.4;
-      }
-
-      p {
-        margin: 0;
-        color: var(--mat-sys-on-surface-variant);
-        max-width: 480px;
-      }
+      gap: 24px;
     }
   `],
 })
@@ -102,6 +87,9 @@ export class WorkspacePageComponent implements OnInit {
 
   readonly project = signal<Project | null>(null);
   readonly isLoading = signal(true);
+
+  /** Passed as a bound function to TemplateUploadComponent */
+  readonly getTemplate = () => this.project()?.template ?? null;
 
   ngOnInit(): void {
     const id = this.route.snapshot.paramMap.get('id');
@@ -122,8 +110,16 @@ export class WorkspacePageComponent implements OnInit {
     });
   }
 
+  onTemplateUploaded(template: TemplateMetadata | null): void {
+    const current = this.project();
+    if (current) {
+      this.project.set({ ...current, template: template ?? null });
+    }
+  }
+
   openEditor(): void {
     const id = this.project()?.id;
     if (id) this.router.navigate(['/projects', id, 'editor']);
   }
 }
+
