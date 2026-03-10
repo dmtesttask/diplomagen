@@ -2,7 +2,6 @@ import {
   AfterViewInit,
   Component,
   ElementRef,
-  NgZone,
   OnDestroy,
   ViewChild,
   inject,
@@ -143,7 +142,6 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
   private readonly router     = inject(Router);
   private readonly projectService = inject(ProjectService);
   private readonly snackBar   = inject(MatSnackBar);
-  private readonly zone       = inject(NgZone);
 
   readonly project        = signal<Project | null>(null);
   readonly isLoading      = signal(true);
@@ -222,14 +220,13 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
         plugins: { text },
       });
 
-      this.updateUnplacedFields(existingSchemas);
-
       this.designer.onChangeTemplate((t) => {
         const schemas = (t.schemas[0] ?? []) as Schema[];
         this.updateUnplacedFields(schemas);
-        this.zone.run(() => this.saveSubject.next(schemas as PdfmeSchemaRecord[]));
+        this.saveSubject.next(schemas as PdfmeSchemaRecord[]);
       });
 
+      this.updateUnplacedFields(existingSchemas);
       this.isLoading.set(false);
     } catch {
       this.isLoading.set(false);

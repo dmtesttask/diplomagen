@@ -19,7 +19,7 @@
           "options": {
             "browser": "src/main.ts",
             "polyfills": [
-              "zone.js"
+              "src/buffer-polyfill.ts"
             ],
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
@@ -81,7 +81,7 @@
           "builder": "@angular/build:karma",
           "options": {
             "polyfills": [
-              "zone.js",
+              "src/buffer-polyfill.ts",
               "zone.js/testing"
             ],
             "tsConfig": "tsconfig.spec.json",
