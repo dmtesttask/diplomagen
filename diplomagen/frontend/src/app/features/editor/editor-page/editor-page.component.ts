@@ -287,14 +287,19 @@ async function imageBlobToPdf(blob: Blob): Promise<ArrayBuffer> {
   if (type === 'application/pdf') {
     return blob.arrayBuffer();
   }
-  // Image (image/jpeg, image/png, …) — embed in a PDF page the same size as the image
+  // Image (image/jpeg, image/png, …) — embed in a PDF page the same size as the image.
+  // Must use the same px→pt conversion as the backend (ensurePdfBuffer: 72/96),
+  // so that pdfme Designer and Generator share identical mm coordinate spaces.
+  const PX_TO_PT = 72 / 96;
   const imgBytes = new Uint8Array(await blob.arrayBuffer());
   const pdfDoc = await PDFDocument.create();
   const img = type.includes('png')
     ? await pdfDoc.embedPng(imgBytes)
     : await pdfDoc.embedJpg(imgBytes);
-  const page = pdfDoc.addPage([img.width, img.height]);
-  page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+  const widthPt  = img.width  * PX_TO_PT;
+  const heightPt = img.height * PX_TO_PT;
+  const page = pdfDoc.addPage([widthPt, heightPt]);
+  page.drawImage(img, { x: 0, y: 0, width: widthPt, height: heightPt });
   const pdfBytes = await pdfDoc.save();
   return pdfBytes.buffer as ArrayBuffer;
 }
