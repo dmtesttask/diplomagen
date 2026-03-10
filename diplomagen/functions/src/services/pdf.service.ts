@@ -15,15 +15,9 @@ import {
   type PDFPage,
 } from 'pdf-lib';
 import * as fontkit from '@pdf-lib/fontkit';
+import { FONT_FILE_MAP, type FontFamilyKey } from '../fonts.config';
 
-// ─── Local type mirrors (matching shared models) ─────────────────────────────
-
-export type FontFamilyKey =
-  | 'PTSerif'
-  | 'PTSans'
-  | 'Roboto'
-  | 'OpenSans'
-  | 'TimesNewRoman';
+export type { FontFamilyKey };
 
 export interface FieldStyle {
   fontFamily: FontFamilyKey;
@@ -91,46 +85,15 @@ function resolveFontPath(
   bold: boolean,
   italic: boolean,
 ): string | null {
-  const map: Record<FontFamilyKey, Record<string, string>> = {
-    PTSerif: {
-      base:       'PTSerif/PTSerif-Regular.ttf',
-      bold:       'PTSerif/PTSerif-Bold.ttf',
-      italic:     'PTSerif/PTSerif-Italic.ttf',
-      boldItalic: 'PTSerif/PTSerif-BoldItalic.ttf',
-    },
-    PTSans: {
-      base:       'PTSans/PTSans-Regular.ttf',
-      bold:       'PTSans/PTSans-Bold.ttf',
-      italic:     'PTSans/PTSans-Italic.ttf',
-      boldItalic: 'PTSans/PTSans-BoldItalic.ttf',
-    },
-    Roboto: {
-      base:       'Roboto/Roboto-Regular.ttf',
-      bold:       'Roboto/Roboto-Bold.ttf',
-      italic:     'Roboto/Roboto-Italic.ttf',
-      boldItalic: 'Roboto/Roboto-BoldItalic.ttf',
-    },
-    OpenSans: {
-      base:       'OpenSans/OpenSans-Regular.ttf',
-      bold:       'OpenSans/OpenSans-Bold.ttf',
-      italic:     'OpenSans/OpenSans-Italic.ttf',
-      boldItalic: 'OpenSans/OpenSans-BoldItalic.ttf',
-    },
-    TimesNewRoman: {
-      base:       'TimesNewRoman/times.ttf',
-      bold:       'TimesNewRoman/timesbd.ttf',
-      italic:     'TimesNewRoman/timesi.ttf',
-      boldItalic: 'TimesNewRoman/timesbi.ttf',
-    },
-  };
+  const variants = FONT_FILE_MAP[family];
+  if (!variants) return null;
 
   const variant = bold && italic ? 'boldItalic'
     : bold                       ? 'bold'
     : italic                     ? 'italic'
     :                              'base';
 
-  const relative = map[family]?.[variant];
-  return relative ? path.join(FONTS_DIR, relative) : null;
+  return path.join(FONTS_DIR, variants[variant]);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

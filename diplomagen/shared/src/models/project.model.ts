@@ -1,4 +1,5 @@
-export type FontFamily = 'PTSerif' | 'PTSans' | 'Roboto' | 'OpenSans' | 'TimesNewRoman';
+import type { FontFamily } from '../fonts';
+export type { FontFamily };
 export type TextAlign = 'left' | 'center' | 'right';
 
 export interface FieldStyle {

@@ -10,6 +10,7 @@ import { createError } from '../middleware/error-handler';
 import type { AuthedRequest } from '../middleware/authenticate';
 import { generateUploadSignedUrl, generateDownloadSignedUrl, uploadBuffer, downloadFileAsBuffer, deleteFile, IS_EMULATOR } from '../services/storage.service';
 import busboy from 'busboy';
+import { FONT_KEYS } from '../fonts.config';
 
 interface TemplateMetadata {
   storageUrl: string;
@@ -441,7 +442,7 @@ projectsRouter.post('/:id/excel', (req: Request, res: Response, next: NextFuncti
 
 // ─── PATCH /projects/:id/fields ───────────────────────────────────────────────
 const FieldStyleSchema = z.object({
-  fontFamily: z.enum(['PTSerif', 'PTSans', 'Roboto', 'OpenSans', 'TimesNewRoman']),
+  fontFamily: z.enum(FONT_KEYS),
   fontSize: z.number().min(1).max(500),
   color: z.string(),
   bold: z.boolean(),

@@ -28,24 +28,16 @@ import type { FabricObject } from 'fabric';
 import * as pdfjsLib from 'pdfjs-dist';
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 import { ProjectService } from '../../projects/project.service';
+import { FONT_REGISTRY } from '../../../../../../shared/src';
 import type { Field, FontFamily, Project, TextAlign } from '../../../../../../shared/src';
 
-// Map stored font family keys → CSS / Google Fonts names
-const FONT_CSS_MAP: Record<FontFamily, string> = {
-  PTSerif: 'PT Serif',
-  PTSans: 'PT Sans',
-  Roboto: 'Roboto',
-  OpenSans: 'Open Sans',
-  TimesNewRoman: 'Times New Roman',
-};
+// Derived from FONT_REGISTRY in shared/src/fonts.ts — do not edit manually
+const FONT_CSS_MAP = Object.fromEntries(
+  FONT_REGISTRY.map(f => [f.key, f.cssName]),
+) as Record<FontFamily, string>;
 
-const FONT_OPTIONS: { value: FontFamily; label: string }[] = [
-  { value: 'PTSerif', label: 'PT Serif' },
-  { value: 'PTSans', label: 'PT Sans' },
-  { value: 'Roboto', label: 'Roboto' },
-  { value: 'OpenSans', label: 'Open Sans' },
-  { value: 'TimesNewRoman', label: 'Times New Roman' },
-];
+const FONT_OPTIONS: { value: FontFamily; label: string }[] =
+  FONT_REGISTRY.map(f => ({ value: f.key as FontFamily, label: f.label }));
 
 @Component({
   selector: 'app-editor-page',
