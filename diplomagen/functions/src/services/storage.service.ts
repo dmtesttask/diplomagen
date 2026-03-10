@@ -1,5 +1,6 @@
 import * as admin from 'firebase-admin';
 import { Storage } from '@google-cloud/storage';
+import { type Writable } from 'stream';
 
 export const BUCKET_NAME =
   process.env['STORAGE_BUCKET'] ??
@@ -87,6 +88,29 @@ export async function generateDownloadSignedUrl(
       expires: Date.now() + expiresInMs,
     });
   return url;
+}
+
+/**
+ * Returns a writable stream that pipes data directly into GCS,
+ * plus a promise that resolves when the upload finishes.
+ * Use this for large files (e.g. ZIP archives) to avoid buffering the entire
+ * payload in memory and to bypass HTTP payload-size limits in the emulator.
+ */
+export function createUploadStream(
+  gcsPath: string,
+  mimeType: string,
+): { stream: Writable; done: Promise<void> } {
+  const file = getBucket().file(gcsPath);
+  const stream = file.createWriteStream({
+    contentType: mimeType,
+    resumable: true,   // multipart/resumable avoids single-request size limits
+    validation: false, // skip CRC32c/MD5 check for throughput
+  });
+  const done = new Promise<void>((resolve, reject) => {
+    stream.on('finish', resolve);
+    stream.on('error', reject);
+  });
+  return { stream, done };
 }
 
 /**

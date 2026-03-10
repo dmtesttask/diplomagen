@@ -10,12 +10,11 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import * as admin from 'firebase-admin';
 import { Timestamp } from 'firebase-admin/firestore';
 import archiver from 'archiver';
-import { PassThrough } from 'stream';
 import { createError } from '../middleware/error-handler';
 import type { AuthedRequest } from '../middleware/authenticate';
 import {
   downloadFileAsBuffer,
-  uploadBuffer,
+  createUploadStream,
 } from '../services/storage.service';
 import { generateDiplomaPdf } from '../services/pdf.service';
 import type { DiplomaField, TemplateInfo } from '../services/pdf.service';
@@ -42,32 +41,6 @@ function jobsRef(uid: string, projectId: string) {
     .collection('users').doc(uid)
     .collection('projects').doc(projectId)
     .collection('jobs');
-}
-
-/**
- * Bundle multiple PDF Buffers into a single ZIP Buffer using archiver.
- */
-async function buildZip(
-  entries: Array<{ name: string; buffer: Buffer }>,
-): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const archive = archiver('zip', { zlib: { level: 6 } });
-    const passthrough = new PassThrough();
-    const bufChunks: Buffer[] = [];
-
-    passthrough.on('data', (c: Buffer) => bufChunks.push(c));
-    passthrough.on('end', () => resolve(Buffer.concat(bufChunks)));
-    passthrough.on('error', reject);
-
-    archive.pipe(passthrough);
-    archive.on('error', reject);
-
-    for (const entry of entries) {
-      archive.append(entry.buffer, { name: entry.name });
-    }
-
-    archive.finalize().catch(reject);
-  });
 }
 
 // ─── Background generation (fire-and-forget) ─────────────────────────────────
@@ -105,9 +78,18 @@ async function runGenerationJob(
     const rows: Record<string, string>[] = JSON.parse(dataBuffer.toString('utf-8')) as Record<string, string>[];
 
     const totalCount = rows.length;
-    const pdfEntries: Array<{ name: string; buffer: Buffer }> = [];
-    let processedCount = 0;
+    const zipPath = `zips/${uid}/${projectId}/${currentJobId}.zip`;
 
+    // Stream each PDF directly into archiver → GCS write stream.
+    // This keeps only ONE pdf buffer in memory at a time and never
+    // accumulates the full ZIP payload, avoiding PayloadTooLargeError.
+    const { stream: zipStream, done: zipDone } = createUploadStream(zipPath, 'application/zip');
+    const archive = archiver('zip', { zlib: { level: 6 } });
+
+    archive.on('error', (err) => { zipStream.destroy(err as unknown as Error); });
+    archive.pipe(zipStream);
+
+    let processedCount = 0;
     for (const row of rows) {
       const pdfBuffer = await generateDiplomaPdf(
         templateBuffer,
@@ -115,7 +97,7 @@ async function runGenerationJob(
         project.fields,
         row,
       );
-      pdfEntries.push({ name: `diploma_${processedCount + 1}.pdf`, buffer: pdfBuffer });
+      archive.append(pdfBuffer, { name: `diploma_${processedCount + 1}.pdf` });
       processedCount++;
 
       // Periodically persist progress (every 10 diplomas or on last one)
@@ -124,10 +106,9 @@ async function runGenerationJob(
       }
     }
 
-    // Build and upload ZIP
-    const zipBuffer = await buildZip(pdfEntries);
-    const zipPath = `zips/${uid}/${projectId}/${currentJobId}.zip`;
-    await uploadBuffer(zipPath, zipBuffer, 'application/zip');
+    // Seal the archive and wait for GCS to confirm the upload is complete
+    await archive.finalize();
+    await zipDone;
 
     // Deduct from user balance (transaction)
     const userRef = db().collection('users').doc(uid);
