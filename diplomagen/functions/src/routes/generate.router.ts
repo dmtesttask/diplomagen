@@ -209,7 +209,7 @@ generateRouter.post('/:id/generate', async (req: Request, res: Response, next: N
     const jobId = jRef.id;
 
     // Respond immediately — generation runs in background
-    res.status(202).json({ jobId, totalCount });
+    res.status(202).json({ jobId, totalCount, status: 'pending' });
 
     // Fire-and-forget (do NOT await — must be after res.json)
     setImmediate(() => {

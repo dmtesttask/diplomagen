@@ -82,7 +82,7 @@ projectsRouter.post('/', async (req: Request, res: Response, next: NextFunction)
     const { uid } = req as AuthedRequest;
     const parsed = CreateProjectSchema.safeParse(req.body);
     if (!parsed.success) {
-      return next(createError(400, parsed.error.message, 'VALIDATION_ERROR'));
+      return next(createError(422, parsed.error.message, 'VALIDATION_ERROR'));
     }
 
     const now = Timestamp.now();
@@ -93,6 +93,10 @@ projectsRouter.post('/', async (req: Request, res: Response, next: NextFunction)
       ownerId: uid,
       template: null,
       fields: [],
+      excelColumns: [],
+      excelDataPath: null,
+      totalRows: null,
+      columnMaxValues: null,
       createdAt: now,
       updatedAt: now,
     };
@@ -110,7 +114,7 @@ projectsRouter.patch('/:id', async (req: Request, res: Response, next: NextFunct
     const { uid } = req as AuthedRequest;
     const parsed = UpdateProjectSchema.safeParse(req.body);
     if (!parsed.success) {
-      return next(createError(400, parsed.error.message, 'VALIDATION_ERROR'));
+      return next(createError(422, parsed.error.message, 'VALIDATION_ERROR'));
     }
 
     const ref = projectRef(uid, req.params['id']);
@@ -172,7 +176,7 @@ projectsRouter.post('/:id/upload-url', async (req: Request, res: Response, next:
     const { uid } = req as AuthedRequest;
     const parsed = UploadUrlSchema.safeParse(req.body);
     if (!parsed.success) {
-      return next(createError(400, parsed.error.message, 'VALIDATION_ERROR'));
+      return next(createError(422, parsed.error.message, 'VALIDATION_ERROR'));
     }
 
     const snap = await projectRef(uid, req.params['id']).get();
@@ -292,7 +296,7 @@ projectsRouter.post('/:id/template', async (req: Request, res: Response, next: N
     const { uid } = req as AuthedRequest;
     const parsed = ConfirmTemplateSchema.safeParse(req.body);
     if (!parsed.success) {
-      return next(createError(400, parsed.error.message, 'VALIDATION_ERROR'));
+      return next(createError(422, parsed.error.message, 'VALIDATION_ERROR'));
     }
 
     const ref = projectRef(uid, req.params['id']);
@@ -463,7 +467,7 @@ projectsRouter.patch('/:id/fields', async (req: Request, res: Response, next: Ne
     const { uid } = req as AuthedRequest;
     const parsed = UpdateFieldsSchema.safeParse(req.body);
     if (!parsed.success) {
-      return next(createError(400, parsed.error.message, 'VALIDATION_ERROR'));
+      return next(createError(422, parsed.error.message, 'VALIDATION_ERROR'));
     }
 
     const ref = projectRef(uid, req.params['id']);

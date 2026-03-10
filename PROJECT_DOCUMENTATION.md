@@ -14,9 +14,10 @@
 4. [High-Level User Flow](#4-high-level-user-flow)
 5. [Architecture Overview](#5-architecture-overview)
 6. [Tech Stack](#6-tech-stack)
-7. [Data Models](#7-data-models)
-8. [Epics, Stories, and Tasks](#8-epics-stories-and-tasks)
-9. [Out of Scope (Future Releases)](#9-out-of-scope-future-releases)
+7. [UI/UX Design and Design System](#7-uiux-design-and-design-system)
+8. [Data Models](#8-data-models)
+9. [Epics, Stories, and Tasks](#9-epics-stories-and-tasks)
+10. [Out of Scope (Future Releases)](#10-out-of-scope-future-releases)
 
 ---
 
@@ -96,13 +97,13 @@ The application follows a **client–serverless-backend** architecture hosted on
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                     Browser (Angular)                     │
+│                     Browser (Angular)                    │
 │                                                          │
-│  Auth (Google OAuth)  │  Canvas Editor  │  Project UI   │
+│  Auth (Google OAuth)  │  Canvas Editor  │   Project UI   │
 └────────────┬─────────────────────────────────────────────┘
              │ HTTPS (REST API)
 ┌────────────▼─────────────────────────────────────────────┐
-│              GCP Cloud Functions (Node.js)                │
+│              GCP Cloud Functions (Node.js)               │
 │                                                          │
 │  /upload-template   /parse-excel   /generate-diplomas    │
 │  /projects (CRUD)                                        │
@@ -175,6 +176,7 @@ User {
   availableGenerations: number // Balance of available diploma generations
   createdAt: timestamp
 }
+```
 
 ### PromoCode (Top-level collection)
 ```

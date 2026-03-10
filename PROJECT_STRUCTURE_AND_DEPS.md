@@ -67,7 +67,7 @@ frontend/
 │   │   │   │   └── auth.guard.ts
 │   │   │   ├── api/
 │   │   │   │   ├── api.service.ts   ← base HTTP service (base URL, token attach)
-│   │   │   │   └── api.interceptor.ts
+│   │   │   │   └── auth.interceptor.ts
 │   │   │   ├── error/
 │   │   │   │   └── error-handler.service.ts
 │   │   │   └── core.module.ts       ← imported once in AppModule
@@ -109,9 +109,8 @@ frontend/
 │   │   │   │   │   ├── excel-upload.component.ts
 │   │   │   │   │   ├── excel-upload.component.html
 │   │   │   │   │   └── excel-upload.component.scss
-│   │   │   │   ├── field-manager/    ← EPIC 5: define + map fields
-│   │   │   │   │   ├── field-manager.component.ts
-│   │   │   │   │   ├── field-manager.component.html
+│   │   │   │   ├── fields-manager/   ← EPIC 5: define + map fields
+│   │   │   │   │   ├── fields-manager.component.ts
 │   │   │   │   │   └── column-mapping/
 │   │   │   │   │       ├── column-mapping.component.ts
 │   │   │   │   │       └── column-mapping.component.html

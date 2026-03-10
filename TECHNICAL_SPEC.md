@@ -114,6 +114,9 @@ Create a new project.
   "updatedAt": "2026-03-07T12:00:00.000Z",
   "template": null,
   "excelColumns": [],
+  "excelDataPath": null,
+  "totalRows": null,
+  "columnMaxValues": null,
   "fields": []
 }
 ```
@@ -210,72 +213,97 @@ Delete a project and all associated files from Cloud Storage.
 
 ---
 
-#### `POST /projects/:projectId/template/upload-url`
+#### `POST /projects/:projectId/upload-url`
 
 Request a signed upload URL so the Angular client can upload the template file directly to Cloud Storage (no file bytes pass through the Cloud Function).
 
 **Request body:**
 ```json
 {
-  "fileName": "diploma_template.pdf",
   "mimeType": "application/pdf",
-  "fileSizeBytes": 1048576
+  "extension": "pdf"
 }
 ```
 
 **Validation:**
 - `mimeType`: must be one of `application/pdf`, `image/jpeg`, `image/png`.
-- `fileSizeBytes`: must be ≤ 20971520 (20 MB).
+- `extension`: string, max 5 characters.
 
 **Response `200`:**
 ```json
 {
   "uploadUrl": "https://storage.googleapis.com/...",
-  "gcsObjectPath": "templates/uid_of_user/abc123/diploma_template.pdf"
+  "gcsPath": "templates/uid_of_user/abc123/template.pdf",
+  "useDirectUpload": false
 }
 ```
 
-The Angular client then performs a `PUT` request directly to `uploadUrl` with the file bytes and `Content-Type` header.
+In the **Firebase Emulator**, `uploadUrl` is `null` and `useDirectUpload` is `true` — signed GCS URLs are not supported in the emulator. The Angular client falls back to `POST /projects/:projectId/upload` in that case.
+
+When `useDirectUpload` is `false`, the client performs a `PUT` request directly to `uploadUrl` with the file bytes and `Content-Type` header.
 
 ---
 
-#### `POST /projects/:projectId/template/confirm`
+#### `POST /projects/:projectId/upload` *(emulator fallback only)*
 
-Called after the file has been successfully uploaded to GCS. The Cloud Function reads the file, resolves its dimensions, generates a preview image (for PDF templates), and saves metadata to Firestore.
+Accepts the template file as `multipart/form-data`. Used only when the Firebase Emulator cannot issue signed GCS URLs (`useDirectUpload: true` from `upload-url`).
+
+**Request:** `Content-Type: multipart/form-data`, query param `?ext=pdf|jpg|png`
+- Field name: `file`
+
+**Response `200`:**
+```json
+{
+  "gcsPath": "templates/uid_of_user/abc123/template.pdf",
+  "mimeType": "application/pdf"
+}
+```
+
+---
+
+#### `POST /projects/:projectId/template`
+
+Called after the file has been successfully uploaded. The Cloud Function reads the file, resolves its dimensions, and saves metadata to Firestore. Replaces any previously set template and resets all field positions.
 
 **Request body:**
 ```json
 {
-  "gcsObjectPath": "templates/uid_of_user/abc123/diploma_template.pdf"
+  "gcsPath": "templates/uid_of_user/abc123/template.pdf",
+  "mimeType": "application/pdf"
 }
 ```
 
-**Response `200`:**
+**Response `200`:** Returns the saved `TemplateMetadata` object directly:
 ```json
 {
-  "template": {
-    "mimeType": "application/pdf",
-    "widthPx": 2480,
-    "heightPx": 3508,
-    "previewSignedUrl": "https://storage.googleapis.com/..."
-  }
+  "storageUrl": "templates/uid_of_user/abc123/template.pdf",
+  "mimeType": "application/pdf",
+  "widthPx": 2480,
+  "heightPx": 3508
 }
 ```
 
-> `previewSignedUrl` points to a JPEG preview image generated from the first page of the PDF (or the original image for JPEG/PNG). It expires in 1 hour and is only used for the editor background display.
+> PDF page dimensions are converted to pixels at 96 DPI (1 pt = 96/72 px). For JPEG/PNG the native pixel dimensions are used.
 
 ---
 
-#### `DELETE /projects/:projectId/template`
+#### `GET /projects/:projectId/template/signed-url`
 
-Delete the current template and reset all field positions.
+Returns a short-lived signed URL for presigned read access to the template file.
 
 **Response `200`:**
 ```json
 {
-  "message": "Template deleted. Field positions have been reset."
+  "signedUrl": "https://storage.googleapis.com/...",
+  "expiresAt": "2026-03-07T13:00:00.000Z"
 }
 ```
+
+---
+
+#### `GET /projects/:projectId/template/content`
+
+Proxies the raw template file bytes through the authenticated Cloud Function. Works in both the emulator and production without requiring a separate Storage request. Response `Content-Type` matches the template MIME type.
 
 ---
 
@@ -407,6 +435,33 @@ Activate a purchased promo code to increase generation balance.
 
 ---
 
+---
+
+#### `GET /projects/:projectId/jobs`
+
+Get the list of recent generation jobs for a project, ordered by creation date descending (max 10).
+
+**Response `200`:**
+```json
+{
+  "jobs": [
+    {
+      "id": "job_xyz789",
+      "projectId": "abc123",
+      "status": "done",
+      "totalCount": 142,
+      "processedCount": 142,
+      "zipStorageUrl": "zips/uid_of_user/abc123/job_xyz789.zip",
+      "errorMessage": null,
+      "createdAt": "2026-03-07T12:00:00.000Z",
+      "expiresAt": "2026-03-08T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
 #### `GET /projects/:projectId/jobs/:jobId`
 
 Get the current status of a generation job. The Angular client also subscribes to this document in real-time via Firestore directly (using AngularFire), so this REST endpoint is only needed for initial load.
@@ -430,19 +485,16 @@ Get the current status of a generation job. The Angular client also subscribes t
 
 #### `GET /projects/:projectId/jobs/:jobId/download`
 
-Get a short-lived signed download URL for the generated ZIP archive.
+Streams the generated ZIP archive bytes directly through the authenticated Cloud Function. The client receives a binary `application/zip` response — no separate Storage URL or expiry logic required.
 
-**Response `200`:**
-```json
-{
-  "downloadUrl": "https://storage.googleapis.com/...",
-  "fileName": "Regional_Math_Olympiad_2026_diplomas.zip",
-  "fileSizeBytes": 52428800,
-  "expiresAt": "2026-03-07T12:15:00.000Z"
-}
-```
+**Response `200`:** Binary ZIP stream.
+- `Content-Type: application/zip`
+- `Content-Disposition: attachment; filename="diplomas_{projectId}.zip"`
 
-> The signed URL expires in 15 minutes (enough time for the browser to start the download). If the ZIP file has been deleted (24h retention), returns `404 NOT_FOUND`.
+**Error cases:**
+- `409 JOB_NOT_DONE` — generation is still in progress.
+- `410 ZIP_EXPIRED` — the 24-hour retention window has passed.
+- `404 NOT_FOUND` — job does not exist or ZIP was deleted.
 
 ---
 
@@ -492,9 +544,10 @@ Get a short-lived signed download URL for the generated ZIP archive.
     heightPx:    number
   },
 
-  excelColumns:    string[],
-  excelDataPath:   string | null,   // GCS path to participants.json
-  totalRows:       number | null,
+  excelColumns:     string[],
+  excelDataPath:    string | null,   // GCS path to participants.json
+  totalRows:        number | null,
+  columnMaxValues:  Record<string, string> | null,   // longest value per column, for editor canvas preview
 
   fields: [
     {
@@ -575,7 +628,7 @@ service cloud.firestore {
 /templates/{uid}/{projectId}/preview.jpg      — preview JPEG of template (for editor)
 /data/{uid}/{projectId}/participants.json     — parsed Excel data
 /previews/{uid}/{projectId}/{rowIndex}.png    — single-row preview render
-/zips/{projectId}/{jobId}.zip                 — generated diploma ZIP
+/zips/{uid}/{projectId}/{jobId}.zip              — generated diploma ZIP
 ```
 
 **Lifecycle rules (set in GCS bucket settings):**
