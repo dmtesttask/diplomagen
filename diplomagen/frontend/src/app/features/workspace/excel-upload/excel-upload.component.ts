@@ -226,7 +226,7 @@ export class ExcelUploadComponent implements OnChanges {
       },
       error: (err) => {
         this.isUploading.set(false);
-        const msg = err?.error?.message ?? 'Failed to upload Excel file.';
+        const msg = err?.error?.error?.message ?? 'Failed to upload Excel file.';
         this.snackBar.open(msg, 'Dismiss', { duration: 5000 });
       },
     });

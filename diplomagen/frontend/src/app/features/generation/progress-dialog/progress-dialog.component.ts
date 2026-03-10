@@ -203,9 +203,9 @@ export class ProgressDialogComponent implements OnInit, OnDestroy {
           document.body.removeChild(a);
           setTimeout(() => URL.revokeObjectURL(url), 10_000);
         },
-        error: (err: { error?: { message?: string } }) => {
+        error: (err: { error?: { error?: { message?: string } } }) => {
           this.downloadBusy.set(false);
-          console.error('Download error:', err?.error?.message ?? err);
+          console.error('Download error:', err?.error?.error?.message ?? err);
         },
       });
   }

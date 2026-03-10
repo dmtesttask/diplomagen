@@ -379,7 +379,7 @@ export class FieldsManagerComponent implements OnChanges, OnInit, OnDestroy {
         },
         error: (err) => {
           this.saveStatus.set('idle');
-          const msg = err?.error?.message ?? 'Failed to save fields.';
+          const msg = err?.error?.error?.message ?? 'Failed to save fields.';
           this.snackBar.open(msg, 'Dismiss', { duration: 4000 });
         },
       });

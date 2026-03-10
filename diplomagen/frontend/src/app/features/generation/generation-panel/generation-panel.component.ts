@@ -293,10 +293,11 @@ export class GenerationPanelComponent implements OnInit, OnChanges {
           this.loadLastJob();
         });
       },
-      error: (err: { error?: { message?: string; code?: string } }) => {
+      error: (err: { error?: { error?: { message?: string; code?: string } } }) => {
         this.isBusy.set(false);
-        const code = err?.error?.code;
-        const msg = err?.error?.message ?? 'Failed to start generation.';
+        const apiError = err?.error?.error;
+        const code = apiError?.code;
+        const msg = apiError?.message ?? 'Failed to start generation.';
         if (code === 'INSUFFICIENT_BALANCE') {
           this.snackBar.open(msg, 'Top Up', { duration: 8000 });
         } else {
@@ -322,14 +323,14 @@ export class GenerationPanelComponent implements OnInit, OnChanges {
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 10_000);
       },
-      error: (err: { error?: { message?: string; code?: string } }) => {
+      error: (err: { error?: { error?: { message?: string; code?: string } } }) => {
         this.downloadBusy.set(false);
-        const code = err?.error?.code;
+        const code = err?.error?.error?.code;
         if (code === 'ZIP_EXPIRED') {
           this.snackBar.open('The ZIP has expired. Please regenerate.', 'Dismiss', { duration: 6000 });
           this.lastJob.set(null);
         } else {
-          this.snackBar.open(err?.error?.message ?? 'Download failed.', 'Dismiss', { duration: 4000 });
+          this.snackBar.open(err?.error?.error?.message ?? 'Download failed.', 'Dismiss', { duration: 4000 });
         }
       },
     });

@@ -591,7 +591,7 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
       },
       error: (err) => {
         this.saveStatus.set('idle');
-        this.snackBar.open(err?.error?.message ?? 'Auto-save failed.', 'Dismiss', { duration: 4000 });
+        this.snackBar.open(err?.error?.error?.message ?? 'Auto-save failed.', 'Dismiss', { duration: 4000 });
       },
     });
   }
