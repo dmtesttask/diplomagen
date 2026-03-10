@@ -11,7 +11,7 @@ admin.initializeApp();
 export const api = functions.onRequest(
   {
     region: 'europe-central2',
-    cors: [process.env['ALLOWED_ORIGIN'] ?? '*'],
+    cors: process.env['ALLOWED_ORIGIN'] ? [process.env['ALLOWED_ORIGIN']] : true,
     memory: '512MiB',
     timeoutSeconds: 120,
     minInstances: 0,

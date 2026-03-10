@@ -24,6 +24,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 // Fabric.js v7 named exports
 import { Canvas as FabricCanvas, FabricImage, IText } from 'fabric';
 import type { FabricObject } from 'fabric';
+// PDF.js for rendering PDF templates to canvas
+import * as pdfjsLib from 'pdfjs-dist';
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs';
 import { ProjectService } from '../../projects/project.service';
 import type { Field, FontFamily, Project, TextAlign } from '../../../../../../shared/src';
 
@@ -618,7 +621,7 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
     });
   }
 
-  private async loadTemplateImage(signedUrl: string, project: Project): Promise<void> {
+  private async loadTemplateImage(blobUrl: string, project: Project): Promise<void> {
     const template = project.template!;
     const containerW = Math.max(this.containerRef.nativeElement.clientWidth - 48, 200);
     this.scaleFactor = containerW / template.widthPx;
@@ -626,7 +629,13 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
     const ch = Math.round(template.heightPx * this.scaleFactor);
     this.canvas.setDimensions({ width: cw, height: ch });
 
-    const img = await FabricImage.fromURL(signedUrl);
+    // For PDF templates, render the first page to a data URL via PDF.js
+    let imageUrl = blobUrl;
+    if (template.mimeType === 'application/pdf') {
+      imageUrl = await this.renderPdfFirstPageToDataUrl(blobUrl, cw, ch);
+    }
+
+    const img = await FabricImage.fromURL(imageUrl);
     img.set({
       left: 0,
       top: 0,
@@ -640,6 +649,26 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this.canvas as any).backgroundImage = img;
     this.canvas.renderAll();
+  }
+
+  /** Render the first page of a PDF blob URL to a PNG data URL at the given display dimensions. */
+  private async renderPdfFirstPageToDataUrl(blobUrl: string, displayW: number, displayH: number): Promise<string> {
+    const loadingTask = pdfjsLib.getDocument(blobUrl);
+    const pdfDoc = await loadingTask.promise;
+    const page = await pdfDoc.getPage(1);
+
+    // Scale the PDF viewport so it fills displayW × displayH
+    const nativeVp = page.getViewport({ scale: 1 });
+    const scale = Math.min(displayW / nativeVp.width, displayH / nativeVp.height);
+    const viewport = page.getViewport({ scale });
+
+    const offscreen = document.createElement('canvas');
+    offscreen.width = Math.round(viewport.width);
+    offscreen.height = Math.round(viewport.height);
+    const ctx = offscreen.getContext('2d')!;
+
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return offscreen.toDataURL('image/png');
   }
 
   // ─── Field object management ──────────────────────────────────────────────────
