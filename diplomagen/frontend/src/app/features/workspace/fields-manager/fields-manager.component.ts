@@ -22,7 +22,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { ProjectService } from '../../projects/project.service';
-import type { Field, FontFamily, TextAlign } from '../../../../../../shared/src';
+import type { Field } from '../../../../../../shared/src';
 
 export interface FieldDraft {
   id: string;
@@ -30,15 +30,6 @@ export interface FieldDraft {
   sourceType: 'excel' | 'static';
   excelColumn: string | null;
   staticValue: string | null;
-  position: { x: number; y: number } | null;
-  style: {
-    fontFamily: FontFamily;
-    fontSize: number;
-    color: string;
-    bold: boolean;
-    italic: boolean;
-    align: TextAlign;
-  };
 }
 
 function draftFromField(field: Field): FieldDraft {
@@ -48,8 +39,6 @@ function draftFromField(field: Field): FieldDraft {
     sourceType: field.staticValue !== null ? 'static' : 'excel',
     excelColumn: field.excelColumn,
     staticValue: field.staticValue,
-    position: field.position,
-    style: { ...field.style },
   };
 }
 
@@ -57,10 +46,8 @@ function fieldFromDraft(draft: FieldDraft): Field {
   return {
     id: draft.id,
     label: draft.label,
-    excelColumn: draft.sourceType === 'excel' ? draft.excelColumn : null,
-    staticValue: draft.sourceType === 'static' ? (draft.staticValue ?? '') : null,
-    position: draft.position,
-    style: { ...draft.style },
+    excelColumn: draft.sourceType === 'excel' ? (draft.excelColumn ?? null) : null,
+    staticValue: draft.sourceType === 'static' ? (draft.staticValue ?? null) : null,
   };
 }
 
@@ -71,15 +58,6 @@ function newDraft(): FieldDraft {
     sourceType: 'excel',
     excelColumn: null,
     staticValue: null,
-    position: null,
-    style: {
-      fontFamily: 'PTSerif',
-      fontSize: 48,
-      color: '#1a1a1a',
-      bold: false,
-      italic: false,
-      align: 'center',
-    },
   };
 }
 
@@ -121,7 +99,7 @@ function newDraft(): FieldDraft {
 
       <div class="fields-list">
         @for (draft of drafts(); track draft.id; let i = $index) {
-          <div class="field-card" [class.placed]="draft.position !== null">
+            <div class="field-card">
             <div class="field-card-header">
               <span class="field-index">{{ i + 1 }}</span>
               <mat-form-field appearance="outline" class="label-field">
@@ -191,15 +169,7 @@ function newDraft(): FieldDraft {
               }
             </div>
 
-            @if (draft.position) {
-              <div class="placed-badge">
-                <mat-icon inline>pin_drop</mat-icon> Placed on canvas
-              </div>
-            } @else {
-              <div class="unplaced-badge">
-                <mat-icon inline>location_off</mat-icon> Not yet placed — open the editor
-              </div>
-            }
+
           </div>
         }
       </div>

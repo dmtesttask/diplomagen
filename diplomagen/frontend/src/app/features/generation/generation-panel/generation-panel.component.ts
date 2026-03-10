@@ -193,7 +193,7 @@ export class GenerationPanelComponent implements OnInit, OnChanges {
   readonly downloadBusy = signal(false);
 
   readonly hasPlacedFields = computed(
-    () => this.project?.fields?.some((f) => f.position !== null) ?? false,
+    () => (this.project?.pdfmeSchemas?.length ?? 0) > 0,
   );
 
   readonly canGenerate = computed(
@@ -209,7 +209,7 @@ export class GenerationPanelComponent implements OnInit, OnChanges {
   readonly generateTooltip = computed(() => {
     if (!this.project?.template) return 'Upload a template first';
     if (!this.project.excelColumns.length) return 'Upload an Excel file first';
-    if (!this.hasPlacedFields()) return 'Place at least one field on the canvas';
+    if (!this.hasPlacedFields()) return 'Place at least one field in the editor';
     return '';
   });
 

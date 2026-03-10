@@ -10,7 +10,7 @@ import { createError } from '../middleware/error-handler';
 import type { AuthedRequest } from '../middleware/authenticate';
 import { generateUploadSignedUrl, generateDownloadSignedUrl, uploadBuffer, downloadFileAsBuffer, deleteFile, IS_EMULATOR } from '../services/storage.service';
 import busboy from 'busboy';
-import { FONT_KEYS } from '../fonts.config';
+
 
 interface TemplateMetadata {
   storageUrl: string;
@@ -441,26 +441,16 @@ projectsRouter.post('/:id/excel', (req: Request, res: Response, next: NextFuncti
 });
 
 // ─── PATCH /projects/:id/fields ───────────────────────────────────────────────
-const FieldStyleSchema = z.object({
-  fontFamily: z.enum(FONT_KEYS),
-  fontSize: z.number().min(1).max(500),
-  color: z.string(),
-  bold: z.boolean(),
-  italic: z.boolean(),
-  align: z.enum(['left', 'center', 'right']),
-});
-
 const FieldSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1).max(100),
   excelColumn: z.string().nullable().optional(),
   staticValue: z.string().nullable().optional(),
-  position: z.object({ x: z.number(), y: z.number() }).nullable().optional(),
-  style: FieldStyleSchema,
 });
 
 const UpdateFieldsSchema = z.object({
   fields: z.array(FieldSchema).max(20),
+  pdfmeSchemas: z.array(z.record(z.unknown())).nullable().optional(),
 });
 
 projectsRouter.patch('/:id/fields', async (req: Request, res: Response, next: NextFunction) => {
@@ -475,7 +465,37 @@ projectsRouter.patch('/:id/fields', async (req: Request, res: Response, next: Ne
     const snap = await ref.get();
     if (!snap.exists) return next(createError(404, 'Project not found.', 'NOT_FOUND'));
 
-    await ref.update({ fields: parsed.data.fields, updatedAt: Timestamp.now() });
+    await ref.update({
+      fields: parsed.data.fields,
+      pdfmeSchemas: parsed.data.pdfmeSchemas ?? null,
+      updatedAt: Timestamp.now(),
+    });
+
+    const updated = await ref.get();
+    res.json({ ...updated.data(), id: updated.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PATCH /projects/:id/pdfme-template ──────────────────────────────────────
+const UpdatePdfmeSchemasSchema = z.object({
+  pdfmeSchemas: z.array(z.record(z.unknown())),
+});
+
+projectsRouter.patch('/:id/pdfme-template', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { uid } = req as AuthedRequest;
+    const parsed = UpdatePdfmeSchemasSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return next(createError(422, parsed.error.message, 'VALIDATION_ERROR'));
+    }
+
+    const ref = projectRef(uid, req.params['id']);
+    const snap = await ref.get();
+    if (!snap.exists) return next(createError(404, 'Project not found.', 'NOT_FOUND'));
+
+    await ref.update({ pdfmeSchemas: parsed.data.pdfmeSchemas, updatedAt: Timestamp.now() });
 
     const updated = await ref.get();
     res.json({ ...updated.data(), id: updated.id });

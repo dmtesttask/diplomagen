@@ -16,8 +16,7 @@ import {
   downloadFileAsBuffer,
   createUploadStream,
 } from '../services/storage.service';
-import { generateDiplomaPdf } from '../services/pdf.service';
-import type { DiplomaField, TemplateInfo } from '../services/pdf.service';
+import { generateDiplomaPdf, type TemplateInfo, type Field, type PdfmeSchemaRecord } from '../services/pdf.service';
 
 export const generateRouter = Router();
 
@@ -61,13 +60,17 @@ async function runGenerationJob(
     if (!projectSnap.exists) throw new Error('Project not found.');
     const project = projectSnap.data() as {
       name: string;
-      template: TemplateInfo & { storageUrl: string } | null;
-      fields: DiplomaField[];
+      template: (TemplateInfo & { storageUrl: string }) | null;
+      fields: Field[];
+      pdfmeSchemas: PdfmeSchemaRecord[] | null;
       excelDataPath: string | null;
       totalRows: number | null;
     };
 
     if (!project.template) throw new Error('No template found on project.');
+    if (!project.pdfmeSchemas || project.pdfmeSchemas.length === 0) {
+      throw new Error('No field layout found. Open the editor and place the fields first.');
+    }
     if (!project.excelDataPath) throw new Error('No Excel data found on project.');
 
     // Load template bytes
@@ -94,6 +97,7 @@ async function runGenerationJob(
       const pdfBuffer = await generateDiplomaPdf(
         templateBuffer,
         project.template,
+        project.pdfmeSchemas,
         project.fields,
         row,
       );
@@ -151,10 +155,11 @@ generateRouter.post('/:id/generate', async (req: Request, res: Response, next: N
     }
 
     const project = pSnap.data() as {
-      template: TemplateInfo & { storageUrl: string } | null;
+      template: (TemplateInfo & { storageUrl: string }) | null;
       excelDataPath: string | null;
       totalRows: number | null;
-      fields: DiplomaField[];
+      fields: Field[];
+      pdfmeSchemas: PdfmeSchemaRecord[] | null;
     };
 
     // Validate prerequisites
@@ -164,8 +169,7 @@ generateRouter.post('/:id/generate', async (req: Request, res: Response, next: N
     if (!project.excelDataPath) {
       return next(createError(422, 'Upload an Excel file before generating.', 'PRECONDITION_FAILED'));
     }
-    const placedFields = project.fields.filter((f) => f.position !== null);
-    if (placedFields.length === 0) {
+    if (!project.pdfmeSchemas || project.pdfmeSchemas.length === 0) {
       return next(createError(422, 'Place at least one field on the canvas before generating.', 'PRECONDITION_FAILED'));
     }
 

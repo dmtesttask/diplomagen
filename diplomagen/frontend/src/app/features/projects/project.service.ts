@@ -3,7 +3,7 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { HttpEventType } from '@angular/common/http';
 import { ApiService } from '../../core/api/api.service';
-import type { Project, ProjectListItem, TemplateMetadata, Field } from '../../../../../shared/src';
+import type { Project, ProjectListItem, TemplateMetadata, Field, PdfmeSchemaRecord } from '../../../../../shared/src';
 
 /**
  * Firestore Timestamps serialize to JSON as { _seconds, _nanoseconds }.
@@ -114,6 +114,12 @@ export class ProjectService {
   /** Bulk-replace the field list for a project */
   updateFields(projectId: string, fields: Field[]): Observable<Project> {
     return this.api.patch<Project>(`/projects/${projectId}/fields`, { fields }).pipe(map(normalizeDates));
+  }
+
+  /** Save pdfme Designer schema layout for a project */
+  updatePdfmeTemplate(projectId: string, pdfmeSchemas: PdfmeSchemaRecord[]): Observable<Project> {
+    return this.api.patch<Project>(`/projects/${projectId}/pdfme-template`, { pdfmeSchemas })
+      .pipe(map(normalizeDates));
   }
 
   /** Get a short-lived signed URL for the project's template file */
