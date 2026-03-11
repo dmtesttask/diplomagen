@@ -10,7 +10,8 @@ import { MAT_DIALOG_DATA, MatDialogRef, MatDialogModule } from '@angular/materia
 import { MatButtonModule } from '@angular/material/button';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { MatIconModule } from '@angular/material/icon';
-import { Subject, takeUntil } from 'rxjs';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { Subject, takeUntil, finalize } from 'rxjs';
 import { GenerationService } from '../generation.service';
 import type { GenerationJob } from '../../../../../../shared/src';
 
@@ -29,6 +30,7 @@ export interface ProgressDialogData {
     MatButtonModule,
     MatProgressBarModule,
     MatIconModule,
+    MatProgressSpinnerModule,
   ],
   template: `
     <h2 mat-dialog-title>Generating Diplomas</h2>
@@ -52,6 +54,15 @@ export interface ProgressDialogData {
             <div>
               <p class="result-title">{{ job()?.processedCount }} diploma(s) generated!</p>
               <p class="result-subtitle">Click Download to save the ZIP archive.</p>
+            </div>
+          </div>
+        }
+        @case ('cancelled') {
+          <div class="result-block cancelled">
+            <mat-icon class="result-icon cancelled-icon">cancel</mat-icon>
+            <div>
+              <p class="result-title">Generation cancelled</p>
+              <p class="result-subtitle">No credits were deducted.</p>
             </div>
           </div>
         }
@@ -80,14 +91,28 @@ export interface ProgressDialogData {
           [disabled]="downloadBusy()"
           (click)="download()"
         >
-          <mat-icon>download</mat-icon>
+          @if (downloadBusy()) {
+            <mat-spinner diameter="18" />
+          } @else {
+            <mat-icon>download</mat-icon>
+          }
           Download ZIP
         </button>
-      } @else if (job()?.status === 'error') {
+      } @else if (job()?.status === 'error' || job()?.status === 'cancelled') {
         <button mat-raised-button (click)="close()">Close</button>
       } @else {
-        <button mat-stroked-button (click)="close()" [disabled]="isRunning()">
-          Cancel
+        <button
+          mat-stroked-button
+          [disabled]="isCancelling()"
+          (click)="requestCancel()"
+        >
+          @if (isCancelling()) {
+            <mat-spinner diameter="16" />
+          }
+          Cancel generation
+        </button>
+        <button mat-raised-button (click)="runInBackground()">
+          Run in background
         </button>
       }
     </mat-dialog-actions>
@@ -123,6 +148,11 @@ export interface ProgressDialogData {
       color: var(--mat-sys-on-secondary-container);
     }
 
+    .result-block.cancelled {
+      background: var(--mat-sys-surface-variant);
+      color: var(--mat-sys-on-surface-variant);
+    }
+
     .result-block.error {
       background: var(--mat-sys-error-container);
       color: var(--mat-sys-on-error-container);
@@ -136,6 +166,7 @@ export interface ProgressDialogData {
     }
 
     .success-icon { color: var(--mat-sys-primary); }
+    .cancelled-icon { color: var(--mat-sys-on-surface-variant); }
     .error-icon   { color: var(--mat-sys-error); }
 
     .result-title {
@@ -147,6 +178,12 @@ export interface ProgressDialogData {
       margin: 0;
       font-size: 0.875rem;
     }
+
+    mat-dialog-actions button {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
   `],
 })
 export class ProgressDialogComponent implements OnInit, OnDestroy {
@@ -156,6 +193,7 @@ export class ProgressDialogComponent implements OnInit, OnDestroy {
 
   readonly job = signal<GenerationJob | undefined>(undefined);
   readonly downloadBusy = signal(false);
+  readonly isCancelling = signal(false);
 
   readonly progressPercent = computed(() => {
     const j = this.job();
@@ -184,6 +222,23 @@ export class ProgressDialogComponent implements OnInit, OnDestroy {
 
   close(): void {
     this.dialogRef.close(this.job()?.status);
+  }
+
+  runInBackground(): void {
+    this.dialogRef.close('background');
+  }
+
+  requestCancel(): void {
+    if (this.isCancelling()) return;
+    this.isCancelling.set(true);
+    this.generationService
+      .cancelJob(this.data.projectId, this.data.jobId)
+      .pipe(finalize(() => this.isCancelling.set(false)))
+      .subscribe({
+        error: (err: { error?: { error?: { message?: string } } }) => {
+          console.error('Cancel error:', err?.error?.error?.message ?? err);
+        },
+      });
   }
 
   download(): void {

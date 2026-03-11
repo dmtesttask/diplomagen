@@ -5,15 +5,10 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { Viewer } from '@pdfme/ui';
-import { text } from '@pdfme/schemas';
-import type { Template, Schema } from '@pdfme/common';
-import { PDFDocument } from 'pdf-lib';
 import { ProjectService } from '../../projects/project.service';
 import { TemplateUploadComponent } from '../template-upload/template-upload.component';
 import { ExcelUploadComponent } from '../excel-upload/excel-upload.component';
 import { GenerationPanelComponent } from '../../generation/generation-panel/generation-panel.component';
-import { loadPdfmeFonts } from '../../editor/editor-page/pdfme-fonts.loader';
 import type { Project, TemplateMetadata, Field } from '../../../../../../shared/src';
 import type { ExcelUploadResult } from '../../projects/project.service';
 
@@ -75,11 +70,11 @@ import type { ExcelUploadResult } from '../../projects/project.service';
               </p>
             </div>
 
-            <!-- pdfme Viewer — shows the diploma with all text elements positioned -->
+            <!-- Canvas preview — shows the diploma with all text elements positioned -->
             @if (summaryLoading()) {
               <div class="summary-loader"><mat-spinner diameter="40" /></div>
             }
-            <div #summaryViewerContainer class="summary-viewer-container"></div>
+            <canvas #summaryCanvas class="summary-canvas"></canvas>
 
             <div class="summary-actions">
               <button mat-stroked-button (click)="openEditor()">
@@ -153,12 +148,12 @@ import type { ExcelUploadResult } from '../../projects/project.service';
       padding: 40px;
     }
 
-    .summary-viewer-container {
+    .summary-canvas {
+      display: block;
       width: 100%;
       max-width: 700px;
-      min-height: 200px;
+      height: auto;
       border-radius: 12px;
-      overflow: hidden;
       box-shadow: 0 4px 20px rgba(0,0,0,0.12);
       border: 1px solid var(--mat-sys-outline-variant);
     }
@@ -179,13 +174,12 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   private readonly projectService = inject(ProjectService);
   private readonly snackBar = inject(MatSnackBar);
 
-  @ViewChild('summaryViewerContainer') summaryViewerRef?: ElementRef<HTMLDivElement>;
+  @ViewChild('summaryCanvas') summaryCanvasRef?: ElementRef<HTMLCanvasElement>;
 
   readonly project = signal<Project | null>(null);
   readonly isLoading = signal(true);
   readonly showSummary = signal(false);
   readonly summaryLoading = signal(false);
-  private viewer: Viewer | null = null;
 
   /** Passed as a bound function to TemplateUploadComponent */
   readonly getTemplate = () => this.project()?.template ?? null;
@@ -217,8 +211,8 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
         const summary = this.route.snapshot.queryParamMap.get('summary');
         if (summary === '1') {
           this.showSummary.set(true);
-          // Wait one tick so @ViewChild container is rendered before mounting Viewer
-          setTimeout(() => this.mountSummaryViewer());
+          // Wait one tick so @ViewChild canvas is rendered before drawing
+          setTimeout(() => this.renderPreviewCanvas());
         }
       },
       error: () => {
@@ -229,7 +223,7 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.viewer?.destroy();
+    // nothing to destroy — canvas is cleaned up by Angular
   }
 
   onTemplateUploaded(template: TemplateMetadata | null): void {
@@ -288,49 +282,98 @@ export class WorkspacePageComponent implements OnInit, OnDestroy {
     this.router.navigate(['/projects']);
   }
 
-  private async mountSummaryViewer(): Promise<void> {
-    const container = this.summaryViewerRef?.nativeElement;
-    const project   = this.project();
-    if (!container || !project?.template) return;
+  private async renderPreviewCanvas(): Promise<void> {
+    const canvas = this.summaryCanvasRef?.nativeElement;
+    const project = this.project();
+    if (!canvas || !project?.template) return;
 
     this.summaryLoading.set(true);
     try {
-      const [templateBlob, fonts] = await Promise.all([
-        firstValueFrom(this.projectService.getTemplateContent(project.id)),
-        loadPdfmeFonts(),
-      ]);
-      const basePdf = await imageBlobToPdf(templateBlob);
+      const blob = await firstValueFrom(this.projectService.getTemplateContent(project.id));
+      const schemas = (project.pdfmeSchemas ?? []) as Array<Record<string, unknown>>;
 
-      const schemas  = (project.pdfmeSchemas as Schema[] | null) ?? [];
-      const template: Template = { basePdf, schemas: [schemas] };
+      // Register any fonts referenced by schemas (skip already-loaded ones)
+      const fontUrlMap: Record<string, string> = {
+        PTSerif:           '/assets/fonts/PTSerif-Regular.ttf',
+        PTSerifBold:       '/assets/fonts/PTSerif-Bold.ttf',
+        PTSerifItalic:     '/assets/fonts/PTSerif-Italic.ttf',
+        PTSerifBoldItalic: '/assets/fonts/PTSerif-BoldItalic.ttf',
+        PTSans:            '/assets/fonts/PTSans-Regular.ttf',
+        Roboto:            '/assets/fonts/Roboto-Regular.ttf',
+        OpenSans:          '/assets/fonts/OpenSans-Regular.ttf',
+        GreatVibes:        '/assets/fonts/GreatVibes-Regular.ttf',
+      };
 
-      this.viewer?.destroy();
-      this.viewer = new Viewer({
-        domContainer: container,
-        template,
-        inputs: [{}],           // empty inputs — shows placeholders/content as-is
-        options: { font: fonts },
-        plugins: { text },
+      const neededFonts = new Set(
+        schemas
+          .map((s) => s['fontName'] as string | undefined)
+          .filter((n): n is string => !!n && n in fontUrlMap),
+      );
+
+      await Promise.all(
+        [...neededFonts]
+          .filter((name) => !document.fonts.check(`12px "${name}"`))
+          .map(async (name) => {
+            const face = new FontFace(name, `url(${fontUrlMap[name]})`);
+            await face.load();
+            document.fonts.add(face);
+          }),
+      );
+      await document.fonts.ready;
+
+      // Draw template image
+      const blobUrl = URL.createObjectURL(blob);
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new Image();
+        el.onload = () => resolve(el);
+        el.onerror = reject;
+        el.src = blobUrl;
       });
+      URL.revokeObjectURL(blobUrl);
+
+      canvas.width  = project.template!.widthPx;
+      canvas.height = project.template!.heightPx;
+      const ctx = canvas.getContext('2d')!;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+      // mm → px at 96 DPI;  pt → px at 96 DPI
+      const MM_TO_PX = 96 / 25.4;
+      const PT_TO_PX = 96 / 72;
+
+      for (const schema of schemas) {
+        const content = (schema['content'] as string | undefined) ?? '';
+        if (!content) continue;
+
+        const pos      = schema['position'] as { x: number; y: number } | undefined;
+        const xMm      = pos?.x ?? 0;
+        const yMm      = pos?.y ?? 0;
+        const fontSizePt = (schema['fontSize'] as number | undefined) ?? 12;
+        const fontName   = (schema['fontName'] as string | undefined) ?? 'PTSerif';
+        const fontColor  = (schema['fontColor'] as string | undefined) ?? '#000000';
+        const alignment  = (schema['alignment'] as CanvasTextAlign | undefined) ?? 'left';
+        const widthMm  = (schema['width'] as number | undefined) ?? 0;
+
+        const xPx      = xMm * MM_TO_PX;
+        const yPx      = yMm * MM_TO_PX;
+        const fontPx   = fontSizePt * PT_TO_PX;
+        const widthPx  = widthMm * MM_TO_PX;
+
+        ctx.font        = `${fontPx}px "${fontName}"`;
+        ctx.fillStyle   = fontColor;
+        ctx.textAlign   = alignment;
+        ctx.textBaseline = 'top';
+
+        // Honour box width for centred/right alignment origin
+        const originX = alignment === 'center' ? xPx + widthPx / 2
+                       : alignment === 'right'  ? xPx + widthPx
+                       : xPx;
+        ctx.fillText(content, originX, yPx);
+      }
     } catch {
       // Preview failed — not critical, user can still generate
     } finally {
       this.summaryLoading.set(false);
     }
   }
-}
-
-async function imageBlobToPdf(blob: Blob): Promise<ArrayBuffer> {
-  const type = blob.type.toLowerCase();
-  if (type === 'application/pdf') return blob.arrayBuffer();
-  const PX_TO_PT = 72 / 96;
-  const imgBytes = new Uint8Array(await blob.arrayBuffer());
-  const pdfDoc   = await PDFDocument.create();
-  const img      = type.includes('png')
-    ? await pdfDoc.embedPng(imgBytes)
-    : await pdfDoc.embedJpg(imgBytes);
-  const page = pdfDoc.addPage([img.width * PX_TO_PT, img.height * PX_TO_PT]);
-  page.drawImage(img, { x: 0, y: 0, width: img.width * PX_TO_PT, height: img.height * PX_TO_PT });
-  return (await pdfDoc.save()).buffer as ArrayBuffer;
 }
 

@@ -294,7 +294,8 @@ export class GenerationPanelComponent implements OnInit, OnChanges {
         dialogRef.afterClosed().subscribe((result: string | undefined) => {
           this.loadLastJob();
           // Only emit (and redirect) when the job completed successfully.
-          // If the dialog was closed on error or mid-generation, do NOT redirect.
+          // 'background' means user dismissed the dialog while still running — do nothing.
+          // If the dialog was closed on error, cancel, or mid-generation, do NOT redirect.
           if (result === 'done') {
             this.generationDone.emit();
           }

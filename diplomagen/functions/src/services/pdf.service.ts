@@ -7,7 +7,6 @@ import { generate } from '@pdfme/generator';
 import { text } from '@pdfme/schemas';
 import type { Template, Schema } from '@pdfme/common';
 import { loadFonts } from './fonts.loader';
-import { ensurePdfBuffer } from './template-to-pdf';
 
 export interface Field {
   id: string;
@@ -24,35 +23,38 @@ export interface TemplateInfo {
   heightPx: number;
 }
 
-export async function generateDiplomaPdf(
-  templateBuffer: Buffer,
-  templateInfo: TemplateInfo,
-  pdfmeSchemas: PdfmeSchemaRecord[],
-  fields: Field[],
-  rowData: Record<string, string>,
-): Promise<Buffer> {
-  const basePdf = await ensurePdfBuffer(
-    templateBuffer,
-    templateInfo.mimeType,
-    templateInfo.widthPx,
-    templateInfo.heightPx,
-  );
-
-  const template: Template = {
-    basePdf: basePdf as Uint8Array<ArrayBuffer>,
-    schemas: [pdfmeSchemas as Schema[]],
-  };
-
-  // Build inputs: schema.name == field.id → resolved value from rowData or staticValue
-  // NEW — build a lookup of schema content by schema name for static fields
-  const schemaContentMap: Record<string, string> = {};
+/**
+ * Pre-computes a map of schema name → content from the stored pdfme schemas.
+ * Call this ONCE before processing multiple rows to avoid redundant iteration.
+ */
+export function buildSchemaContentMap(pdfmeSchemas: PdfmeSchemaRecord[]): Record<string, string> {
+  const map: Record<string, string> = {};
   for (const schema of pdfmeSchemas) {
     const name = (schema as Record<string, unknown>)['name'] as string | undefined;
     const content = (schema as Record<string, unknown>)['content'] as string | undefined;
     if (name !== undefined && content !== undefined) {
-      schemaContentMap[name] = content;
+      map[name] = content;
     }
   }
+  return map;
+}
+
+/**
+ * Generates a single diploma PDF.
+ * @param basePdf  Already-converted PDF bytes (call ensurePdfBuffer once before the loop).
+ * @param schemaContentMap  Pre-built map from buildSchemaContentMap (call once before the loop).
+ */
+export async function generateDiplomaPdf(
+  basePdf: Uint8Array<ArrayBuffer>,
+  pdfmeSchemas: PdfmeSchemaRecord[],
+  fields: Field[],
+  rowData: Record<string, string>,
+  schemaContentMap: Record<string, string>,
+): Promise<Buffer> {
+  const template: Template = {
+    basePdf,
+    schemas: [pdfmeSchemas as Schema[]],
+  };
 
   const input: Record<string, string> = {};
   for (const field of fields) {

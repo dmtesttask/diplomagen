@@ -43,6 +43,8 @@ export interface Project {
    * Each element's `name` field equals a Field.id from the fields array above.
    */
   pdfmeSchemas: PdfmeSchemaRecord[] | null;
+  /** ID of the most recently completed generation job. Used to surface download on the project card. */
+  lastCompletedJobId: string | null;
 }
 
 /** Lightweight version returned in project list */
@@ -52,4 +54,5 @@ export interface ProjectListItem {
   createdAt: Date | string;
   updatedAt: Date | string;
   template: Omit<TemplateMetadata, 'storageUrl'> | null;
+  lastCompletedJobId: string | null;
 }

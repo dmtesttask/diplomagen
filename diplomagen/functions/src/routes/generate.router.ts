@@ -16,11 +16,23 @@ import {
   downloadFileAsBuffer,
   createUploadStream,
 } from '../services/storage.service';
-import { generateDiplomaPdf, type TemplateInfo, type Field, type PdfmeSchemaRecord } from '../services/pdf.service';
+import {
+  generateDiplomaPdf,
+  buildSchemaContentMap,
+  type TemplateInfo,
+  type Field,
+  type PdfmeSchemaRecord,
+} from '../services/pdf.service';
+import { ensurePdfBuffer } from '../services/template-to-pdf';
 
 export const generateRouter = Router();
 
 const db = () => admin.firestore();
+
+/** In-memory set of jobIds for which a cancel has been requested. */
+const cancelRequests = new Set<string>();
+
+const CONCURRENCY = 5;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -73,19 +85,25 @@ async function runGenerationJob(
     }
     if (!project.excelDataPath) throw new Error('No Excel data found on project.');
 
-    // Load template bytes
-    const templateBuffer = await downloadFileAsBuffer(project.template.storageUrl);
+    // Load template bytes and participant data in parallel
+    const [templateBuffer, dataBuffer] = await Promise.all([
+      downloadFileAsBuffer(project.template.storageUrl),
+      downloadFileAsBuffer(project.excelDataPath),
+    ]);
 
-    // Load participant data JSON
-    const dataBuffer = await downloadFileAsBuffer(project.excelDataPath);
     const rows: Record<string, string>[] = JSON.parse(dataBuffer.toString('utf-8')) as Record<string, string>[];
-
-    const totalCount = rows.length;
     const zipPath = `zips/${uid}/${projectId}/${currentJobId}.zip`;
 
+    // Pre-compute once — avoids repeated template conversion and schema map rebuilding
+    const basePdf = await ensurePdfBuffer(
+      templateBuffer,
+      project.template.mimeType,
+      project.template.widthPx,
+      project.template.heightPx,
+    );
+    const schemaContentMap = buildSchemaContentMap(project.pdfmeSchemas!);
+
     // Stream each PDF directly into archiver → GCS write stream.
-    // This keeps only ONE pdf buffer in memory at a time and never
-    // accumulates the full ZIP payload, avoiding PayloadTooLargeError.
     const { stream: zipStream, done: zipDone } = createUploadStream(zipPath, 'application/zip');
     const archive = archiver('zip', { zlib: { level: 6 } });
 
@@ -93,21 +111,35 @@ async function runGenerationJob(
     archive.pipe(zipStream);
 
     let processedCount = 0;
-    for (const row of rows) {
-      const pdfBuffer = await generateDiplomaPdf(
-        templateBuffer,
-        project.template,
-        project.pdfmeSchemas,
-        project.fields,
-        row,
-      );
-      archive.append(pdfBuffer, { name: `diploma_${processedCount + 1}.pdf` });
-      processedCount++;
-
-      // Periodically persist progress (every 10 diplomas or on last one)
-      if (processedCount % 10 === 0 || processedCount === totalCount) {
-        await jRef.update({ processedCount }).catch(() => { /* non-critical */ });
+    for (let i = 0; i < rows.length; i += CONCURRENCY) {
+      // Check for cancellation before each batch
+      if (cancelRequests.has(currentJobId)) {
+        cancelRequests.delete(currentJobId);
+        archive.abort();
+        await jRef.update({ status: 'cancelled', processedCount }).catch(() => {});
+        return;
       }
+
+      const batch = rows.slice(i, i + CONCURRENCY);
+      const pdfBuffers = await Promise.all(
+        batch.map((row) =>
+          generateDiplomaPdf(
+            basePdf as Uint8Array<ArrayBuffer>,
+            project.pdfmeSchemas!,
+            project.fields,
+            row,
+            schemaContentMap,
+          ),
+        ),
+      );
+
+      for (const [j, pdfBuffer] of pdfBuffers.entries()) {
+        archive.append(pdfBuffer, { name: `diploma_${i + j + 1}.pdf` });
+        processedCount++;
+      }
+
+      // Persist progress after each batch
+      await jRef.update({ processedCount }).catch(() => { /* non-critical */ });
     }
 
     // Seal the archive and wait for GCS to confirm the upload is complete
@@ -126,12 +158,11 @@ async function runGenerationJob(
       });
     });
 
-    // Mark done
-    await jRef.update({
-      status: 'done',
-      processedCount,
-      zipStorageUrl: zipPath,
-    });
+    // Mark done and record jobId on the project for quick access from the card
+    await Promise.all([
+      jRef.update({ status: 'done', processedCount, zipStorageUrl: zipPath }),
+      projectRef(uid, projectId).update({ lastCompletedJobId: currentJobId }),
+    ]);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     await jRef.update({
@@ -295,6 +326,31 @@ generateRouter.get(
         `attachment; filename="diplomas_${projectId}.zip"`,
       );
       return res.send(buffer);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── POST /projects/:id/jobs/:jobId/cancel ───────────────────────────────────
+
+generateRouter.post(
+  '/:id/jobs/:jobId/cancel',
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { uid } = req as AuthedRequest;
+      const { id: projectId, jobId } = req.params as { id: string; jobId: string };
+
+      const jSnap = await jobRef(uid, projectId, jobId).get();
+      if (!jSnap.exists) return next(createError(404, 'Job not found.', 'NOT_FOUND'));
+
+      const job = jSnap.data() as { status: string };
+      if (job.status !== 'pending' && job.status !== 'processing') {
+        return next(createError(409, 'Job is not running.', 'JOB_NOT_RUNNING'));
+      }
+
+      cancelRequests.add(jobId);
+      res.status(202).json({ message: 'Cancel request accepted.' });
     } catch (err) {
       next(err);
     }

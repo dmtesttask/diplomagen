@@ -7,8 +7,11 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatDialog } from '@angular/material/dialog';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatChipsModule } from '@angular/material/chips';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { ConfirmDialogComponent } from '../../../shared/components/confirm-dialog/confirm-dialog.component';
+import { GenerationService } from '../../generation/generation.service';
 import type { ProjectListItem } from '../../../../../../shared/src';
 
 @Component({
@@ -22,6 +25,7 @@ import type { ProjectListItem } from '../../../../../../shared/src';
     MatMenuModule,
     MatTooltipModule,
     MatChipsModule,
+    MatProgressSpinnerModule,
   ],
   template: `
     <mat-card class="project-card" (click)="cardClick.emit()" tabindex="0" (keydown.enter)="cardClick.emit()">
@@ -86,6 +90,27 @@ import type { ProjectListItem } from '../../../../../../shared/src';
             Updated {{ project.updatedAt | date:'mediumDate' }}
           </span>
         </div>
+
+        <!-- Download ready banner -->
+        @if (project.lastCompletedJobId) {
+          <div class="download-footer" (click)="$event.stopPropagation()">
+            <mat-icon class="download-footer-icon">check_circle</mat-icon>
+            <span class="download-footer-label">Diplomas ready</span>
+            <button
+              mat-stroked-button
+              class="download-footer-btn"
+              [disabled]="downloadBusy()"
+              (click)="downloadZip($event)"
+            >
+              @if (downloadBusy()) {
+                <mat-spinner diameter="16" />
+              } @else {
+                <mat-icon>download</mat-icon>
+              }
+              Download ZIP
+            </button>
+          </div>
+        }
       </mat-card-content>
     </mat-card>
   `,
@@ -209,15 +234,77 @@ import type { ProjectListItem } from '../../../../../../shared/src';
     .delete-item {
       color: var(--mat-sys-error) !important;
     }
+
+    .download-footer {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 0 2px;
+      border-top: 1px solid var(--mat-sys-outline-variant);
+      font-size: 0.8rem;
+      color: var(--mat-sys-primary);
+    }
+
+    .download-footer-icon {
+      font-size: 16px;
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    .download-footer-label {
+      flex: 1;
+    }
+
+    .download-footer-btn {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.75rem;
+      height: 32px;
+      line-height: 32px;
+    }
   `],
 })
 export class ProjectCardComponent {
   private readonly dialog = inject(MatDialog);
+  private readonly generationService = inject(GenerationService);
+  private readonly snackBar = inject(MatSnackBar);
 
   @Input({ required: true }) project!: ProjectListItem;
   @Output() cardClick = new EventEmitter<void>();
   @Output() rename = new EventEmitter<string>();
   @Output() delete = new EventEmitter<void>();
+
+  readonly downloadBusy = signal(false);
+
+  downloadZip(event: Event): void {
+    event.stopPropagation();
+    const jobId = this.project.lastCompletedJobId;
+    if (!jobId || this.downloadBusy()) return;
+    this.downloadBusy.set(true);
+    this.generationService.downloadZip(this.project.id, jobId).subscribe({
+      next: (blob) => {
+        this.downloadBusy.set(false);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${this.project.name}_diplomas.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      },
+      error: (err: { error?: { error?: { message?: string; code?: string } } }) => {
+        this.downloadBusy.set(false);
+        const code = err?.error?.error?.code;
+        const msg = code === 'ZIP_EXPIRED'
+          ? 'The ZIP has expired. Please regenerate.'
+          : (err?.error?.error?.message ?? 'Download failed.');
+        this.snackBar.open(msg, 'Dismiss', { duration: 6000 });
+      },
+    });
+  }
 
   openRenameDialog(event: Event): void {
     event.stopPropagation();

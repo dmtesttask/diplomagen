@@ -61,4 +61,12 @@ export class GenerationService {
   downloadZip(projectId: string, jobId: string): Observable<Blob> {
     return this.api.getBlob(`/projects/${projectId}/jobs/${jobId}/download`);
   }
+
+  /**
+   * POST /projects/:id/jobs/:jobId/cancel
+   * Signals the backend to stop the running generation job.
+   */
+  cancelJob(projectId: string, jobId: string): Observable<void> {
+    return this.api.post<void>(`/projects/${projectId}/jobs/${jobId}/cancel`, {});
+  }
 }

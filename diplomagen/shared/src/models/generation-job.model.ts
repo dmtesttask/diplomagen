@@ -1,4 +1,4 @@
-export type GenerationStatus = 'pending' | 'processing' | 'done' | 'error';
+export type GenerationStatus = 'pending' | 'processing' | 'done' | 'error' | 'cancelled';
 
 export interface GenerationJob {
   id: string;
