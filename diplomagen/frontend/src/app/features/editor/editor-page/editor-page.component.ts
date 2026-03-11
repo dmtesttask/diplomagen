@@ -53,19 +53,35 @@ import { loadPdfmeFonts } from './pdfme-fonts.loader';
         </div>
         <span class="spacer"></span>
 
-        <!-- Buttons to add unplaced fields into the Designer -->
-        @if (project()?.fields?.length) {
-          <div class="field-buttons">
-            @for (field of unplacedFields(); track field.id) {
-              <button mat-stroked-button (click)="addFieldToDesigner(field)" [matTooltip]="'Add: ' + field.label">
+        <!-- Columns removed from canvas — click to re-add -->
+        @if (unplacedColumns().length > 0) {
+          <div class="unplaced-cols">
+            @for (col of unplacedColumns(); track col) {
+              <button
+                mat-stroked-button
+                class="unplaced-col-btn"
+                (click)="addColumnToDesigner(col)"
+                [matTooltip]="'Re-add: ' + col"
+              >
                 <mat-icon>add</mat-icon>
-                {{ field.label }}
+                {{ col }}
               </button>
             }
           </div>
         }
 
-        <button mat-stroked-button (click)="goBack()" aria-label="Done editing">
+        <button mat-stroked-button class="toolbar-action-btn" (click)="addStaticText()" matTooltip="Add a static text element">
+          <mat-icon>text_fields</mat-icon>
+          Add Static Text
+        </button>
+
+        <button mat-stroked-button class="toolbar-action-btn toolbar-action-btn--soon" disabled matTooltip="Coming soon">
+          <mat-icon>qr_code_2</mat-icon>
+          Add QR Code
+          <span class="soon-badge">Soon</span>
+        </button>
+
+        <button mat-stroked-button (click)="doneEditing()" aria-label="Done editing">
           <mat-icon>done</mat-icon>
           Done
         </button>
@@ -78,8 +94,10 @@ import { loadPdfmeFonts } from './pdfme-fonts.loader';
         </div>
       }
 
-      <!-- pdfme Designer mounts here -->
-      <div #designerContainer class="designer-container"></div>
+      <div class="editor-body">
+        <!-- pdfme Designer mounts here -->
+        <div #designerContainer class="designer-container"></div>
+      </div>
 
     </div>
   `,
@@ -120,9 +138,52 @@ import { loadPdfmeFonts } from './pdfme-fonts.loader';
       height: 18px;
     }
     .spacer { flex: 1; }
-    .field-buttons { display: flex; gap: 4px; flex-wrap: wrap; }
 
-    .designer-container { flex: 1; overflow: hidden; }
+    .unplaced-cols {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .unplaced-col-btn {
+      font-size: 0.75rem;
+      height: 32px;
+      padding: 0 10px;
+      border-style: dashed;
+      opacity: 0.8;
+      mat-icon { font-size: 14px; width: 14px; height: 14px; }
+    }
+
+    .toolbar-action-btn {
+      font-size: 0.8rem;
+      gap: 4px;
+    }
+
+    .toolbar-action-btn--soon {
+      opacity: 0.55;
+    }
+
+    .soon-badge {
+      margin-left: 4px;
+      font-size: 0.65rem;
+      background: var(--mat-sys-surface-variant);
+      border-radius: 4px;
+      padding: 1px 4px;
+      color: var(--mat-sys-on-surface-variant);
+    }
+
+    .editor-body {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .designer-container {
+      flex: 1;
+      overflow: hidden;
+      min-width: 0;
+    }
 
     .loading-overlay {
       position: absolute;
@@ -132,6 +193,39 @@ import { loadPdfmeFonts } from './pdfme-fonts.loader';
       justify-content: center;
       background: rgba(255,255,255,0.7);
       z-index: 10;
+    }
+
+    /* Hide pdfme Designer's built-in left-panel "add schema" side button */
+    ::ng-deep .designer-container .right-sidebar-buttons,
+    ::ng-deep .designer-container [class*="leftSidebar"],
+    ::ng-deep .designer-container [class*="left-sidebar"] {
+      display: none !important;
+    }
+
+    /**
+     * Scale up react-moveable resize/rotation handles.
+     * These elements are rendered OUTSIDE the Paper's transform:scale() div,
+     * so their pixel size is already in screen pixels — just enlarge directly.
+     */
+    ::ng-deep .designer-container .moveable-control {
+      width: 20px !important;
+      height: 20px !important;
+      margin-top: -10px !important;
+      margin-left: -10px !important;
+      border-width: 3px !important;
+    }
+
+    /**
+     * The pdfme delete button is rendered INSIDE the Paper's transform:scale() div.
+     * At low scale values (~0.3–0.5 for high-res templates) it becomes nearly invisible.
+     * --pdfme-delete-scale is set at runtime (1/scale) to counteract the parent transform.
+     */
+    ::ng-deep .designer-container .pdfme-designer-delete-button {
+      width: 20px !important;
+      height: 20px !important;
+      padding: 4px !important;
+      transform: scale(var(--pdfme-delete-scale, 1)) !important;
+      transform-origin: top left !important;
     }
   `],
 })
@@ -146,7 +240,7 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
   readonly project        = signal<Project | null>(null);
   readonly isLoading      = signal(true);
   readonly saveStatus     = signal<'idle' | 'saving' | 'saved'>('idle');
-  readonly unplacedFields = signal<Field[]>([]);
+  readonly unplacedColumns = signal<string[]>([]);
 
   private designer: Designer | null = null;
   private readonly saveSubject = new Subject<PdfmeSchemaRecord[]>();
@@ -220,13 +314,17 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
         plugins: { text },
       });
 
+      this.applyCanvasControlScale();
+
       this.designer.onChangeTemplate((t) => {
         const schemas = (t.schemas[0] ?? []) as Schema[];
-        this.updateUnplacedFields(schemas);
+        this.updateUnplacedColumns(schemas);
         this.saveSubject.next(schemas as PdfmeSchemaRecord[]);
       });
 
-      this.updateUnplacedFields(existingSchemas);
+      // Auto-add all Excel columns not yet on the canvas
+      this.autoAddMissingColumns(project, existingSchemas);
+
       this.isLoading.set(false);
     } catch {
       this.isLoading.set(false);
@@ -235,30 +333,51 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
     }
   }
 
-  private placeholderForField(field: Field): string {
-    if (field.staticValue !== null) return field.staticValue;
-    const maxValues = this.project()?.columnMaxValues;
-    if (field.excelColumn && maxValues?.[field.excelColumn]) {
-      return maxValues[field.excelColumn];
-    }
-    return `{${field.label}}`;
+  private updateUnplacedColumns(currentSchemas: Schema[]): void {
+    const placed = new Set(currentSchemas.map((s) => s.name));
+    const allCols = this.project()?.excelColumns ?? [];
+    this.unplacedColumns.set(allCols.filter((col) => !placed.has(col)));
   }
 
-  addFieldToDesigner(field: Field): void {
+  /**
+   * Computes pdfme's initial canvas scale factor (paper px / container px)
+   * and stores the inverse as a CSS variable so the delete button can
+   * counter-scale itself to an absolute screen-pixel size.
+   *
+   * Formula mirrors pdfme's internal getScale():
+   *   scale = Math.floor(min(containerW/widthPx, (containerH-30)/heightPx, 1) * 100) / 100
+   */
+  private applyCanvasControlScale(): void {
+    const tmpl = this.project()?.template;
+    if (!tmpl) return;
+    const RULER = 30; // pdfme RULER_HEIGHT constant
+    const el = this.containerRef.nativeElement;
+    const scaleW = (el.clientWidth  - RULER) / tmpl.widthPx;
+    const scaleH = (el.clientHeight - RULER) / tmpl.heightPx;
+    const scale  = Math.floor(Math.min(scaleW, scaleH, 1) * 100) / 100;
+    el.style.setProperty('--pdfme-delete-scale', String(scale > 0 ? 1 / scale : 1));
+  }
+
+  addColumnToDesigner(col: string): void {
     if (!this.designer) return;
     const current = this.designer.getTemplate();
-    const currentSchemas = (current.schemas[0] ?? []) as Schema[];
+    const schemas = (current.schemas[0] ?? []) as Schema[];
+    if (schemas.some((s) => s.name === col)) return;
 
-    if (currentSchemas.some((s) => s.name === field.id)) return;
+    const tmpl = this.project()?.template;
+    const { fontSize, itemH, itemW, canvasW, canvasH } = tmpl
+      ? defaultTextDims(tmpl.widthPx, tmpl.heightPx)
+      : { fontSize: 18, itemH: 15, itemW: 120, canvasW: 210, canvasH: 297 };
 
+    const maxValues = this.project()?.columnMaxValues;
     const newSchema: Schema = {
-      name: field.id,
+      name: col,
       type: 'text',
-      content: this.placeholderForField(field),
-      position: { x: 50, y: 100 },
-      width: 100,
-      height: 15,
-      fontSize: 18,
+      content: (maxValues && maxValues[col]) ? maxValues[col] : col,
+      position: { x: (canvasW - itemW) / 2, y: (canvasH - itemH) / 2 },
+      width: itemW,
+      height: itemH,
+      fontSize,
       fontName: 'PTSerif',
       fontColor: '#1a1a1a',
       alignment: 'center',
@@ -266,20 +385,123 @@ export class EditorPageComponent implements AfterViewInit, OnDestroy {
 
     this.designer.updateTemplate({
       ...current,
-      schemas: [[...currentSchemas, newSchema]],
+      schemas: [[...schemas, newSchema]],
     });
   }
 
-  private updateUnplacedFields(currentSchemas: Schema[]): void {
-    const placedNames = new Set(currentSchemas.map((s) => s.name));
-    const fields = this.project()?.fields ?? [];
-    this.unplacedFields.set(fields.filter((f) => !placedNames.has(f.id)));
+  private autoAddMissingColumns(project: Project, existingSchemas: Schema[]): void {
+    if (!this.designer) return;
+    const cols = project.excelColumns ?? [];
+    if (cols.length === 0) return;
+
+    const placedNames = new Set(existingSchemas.map((s) => s.name));
+    const missing = cols.filter((col) => !placedNames.has(col));
+    if (missing.length === 0) return;
+
+    const tmpl = project.template;
+    const { fontSize, itemH, itemW, canvasW, canvasH } = tmpl
+      ? defaultTextDims(tmpl.widthPx, tmpl.heightPx)
+      : { fontSize: 18, itemH: 15, itemW: 120, canvasW: 210, canvasH: 297 };
+
+    const gap = Math.round(itemH * 0.3);
+    const groupH = missing.length * itemH + (missing.length - 1) * gap;
+    const startX = (canvasW - itemW) / 2;
+    const startY = Math.max(10, (canvasH - groupH) / 2);
+
+    const maxValues = project.columnMaxValues;
+    const newSchemas: Schema[] = missing.map((col, i) => ({
+      name: col,
+      type: 'text',
+      content: (maxValues && maxValues[col]) ? maxValues[col] : col,
+      position: { x: startX, y: startY + i * (itemH + gap) },
+      width: itemW,
+      height: itemH,
+      fontSize,
+      fontName: 'PTSerif',
+      fontColor: '#1a1a1a',
+      alignment: 'center',
+    } as Schema));
+
+    const current = this.designer.getTemplate();
+    this.designer.updateTemplate({
+      ...current,
+      schemas: [[...existingSchemas, ...newSchemas]],
+    });
+  }
+
+  addStaticText(): void {
+    if (!this.designer) return;
+    const current = this.designer.getTemplate();
+    const schemas = (current.schemas[0] ?? []) as Schema[];
+
+    const tmpl = this.project()?.template;
+    const { fontSize, itemH, itemW, canvasW, canvasH } = tmpl
+      ? defaultTextDims(tmpl.widthPx, tmpl.heightPx)
+      : { fontSize: 16, itemH: 15, itemW: 120, canvasW: 210, canvasH: 297 };
+
+    const staticId = `static_${Date.now()}`;
+    const newSchema: Schema = {
+      name: staticId,
+      type: 'text',
+      content: 'Static Text',
+      position: { x: (canvasW - itemW) / 2, y: (canvasH - itemH) / 2 },
+      width: itemW,
+      height: itemH,
+      fontSize,
+      fontName: 'PTSerif',
+      fontColor: '#1a1a1a',
+      alignment: 'center',
+    } as Schema;
+
+    this.designer.updateTemplate({
+      ...current,
+      schemas: [[...schemas, newSchema]],
+    });
+
+    // Also persist a Field record for this static schema so PDF generation works
+    const newField: Field = {
+      id: staticId,
+      label: 'Static Text',
+      excelColumn: null,
+      staticValue: 'Static Text',
+    };
+    const existing = this.project()?.fields ?? [];
+    if (!existing.some((f) => f.id === staticId)) {
+      const updated = [...existing, newField];
+      this.projectService.updateFields(this.project()!.id, updated).subscribe({
+        next: (p) => this.project.set(p),
+        error: () => { /* non-critical: schema is already on canvas */ },
+      });
+    }
+  }
+
+  doneEditing(): void {
+    const id = this.project()?.id;
+    this.router.navigate(id ? ['/projects', id] : ['/projects'], {
+      queryParams: { summary: '1' },
+    });
   }
 
   goBack(): void {
     const id = this.project()?.id;
     this.router.navigate(id ? ['/projects', id] : ['/projects']);
   }
+}
+
+/**
+ * Compute default text element dimensions based on the template pixel size.
+ * pdfme uses mm as its coordinate unit. Conversion: mm = px * (25.4 / 96).
+ * For a 3508×2480px template this yields ~928×656mm, and a fontSize of ~66pt —
+ * squarely within the visible 55-75 range on the pdfme Size panel.
+ */
+function defaultTextDims(widthPx: number, heightPx: number) {
+  const PX_TO_MM = 25.4 / 96;
+  const canvasW = widthPx  * PX_TO_MM;
+  const canvasH = heightPx * PX_TO_MM;
+  const fontSize = Math.round(canvasH * 0.1);
+  const itemH    = Math.round(fontSize * 0.85);
+  const itemW    = Math.min(Math.round(canvasW * 0.65), canvasW - 20);
+  return { fontSize, itemH, itemW, canvasW, canvasH };
 }
 
 async function imageBlobToPdf(blob: Blob): Promise<ArrayBuffer> {

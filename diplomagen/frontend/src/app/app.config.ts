@@ -15,7 +15,7 @@ import { authInterceptor } from './core/api/auth.interceptor';
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZonelessChangeDetection(),
-    provideRouter(routes, withComponentInputBinding(), withViewTransitions()),
+    provideRouter(routes, withComponentInputBinding(), withViewTransitions({ skipInitialTransition: true })),
     provideHttpClient(withInterceptors([authInterceptor])),
     provideAnimationsAsync(),
 

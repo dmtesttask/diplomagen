@@ -44,12 +44,24 @@ export async function generateDiplomaPdf(
   };
 
   // Build inputs: schema.name == field.id → resolved value from rowData or staticValue
+  // NEW — build a lookup of schema content by schema name for static fields
+  const schemaContentMap: Record<string, string> = {};
+  for (const schema of pdfmeSchemas) {
+    const name = (schema as Record<string, unknown>)['name'] as string | undefined;
+    const content = (schema as Record<string, unknown>)['content'] as string | undefined;
+    if (name !== undefined && content !== undefined) {
+      schemaContentMap[name] = content;
+    }
+  }
+
   const input: Record<string, string> = {};
   for (const field of fields) {
-    const value = field.excelColumn
-      ? String(rowData[field.excelColumn] ?? '')
-      : (field.staticValue ?? '');
-    input[field.id] = value;
+    if (field.excelColumn) {
+      input[field.id] = String(rowData[field.excelColumn] ?? '');
+    } else {
+      // Prefer the content the user typed in the Designer over the stored staticValue
+      input[field.id] = schemaContentMap[field.id] ?? field.staticValue ?? '';
+    }
   }
 
   const pdfBytes = await generate({

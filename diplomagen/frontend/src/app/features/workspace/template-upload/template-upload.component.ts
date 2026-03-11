@@ -16,6 +16,19 @@ import { Storage, ref as storageRef, getDownloadURL } from '@angular/fire/storag
 import { ProjectService } from '../../projects/project.service';
 import type { TemplateMetadata } from '../../../../../../shared/src';
 
+interface PresetTemplate {
+  id: number;
+  thumbUrl: string;
+  label: string;
+}
+
+const PRESET_TEMPLATES: PresetTemplate[] = [
+  { id: 1, thumbUrl: 'assets/templates/template-1.png', label: 'Template 1' },
+  { id: 2, thumbUrl: 'assets/templates/template-2.png', label: 'Template 2' },
+  { id: 3, thumbUrl: 'assets/templates/template-3.png', label: 'Template 3' },
+  { id: 4, thumbUrl: 'assets/templates/template-4.png', label: 'Template 4' },
+];
+
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'application/pdf'] as const;
 type AllowedMime = typeof ALLOWED_TYPES[number];
 const MAX_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
@@ -69,6 +82,27 @@ function getExtension(mimeType: string): string {
           </div>
         </div>
       } @else {
+        <!-- Preset templates — shown only when no template is set -->
+        <div class="presets-section">
+          <p class="presets-label">Choose a predefined template or upload your own:</p>
+          <div class="presets-grid">
+            @for (preset of presets(); track preset.id) {
+              <button
+                class="preset-card"
+                (click)="selectPreset(preset)"
+                [disabled]="isUploading() || presetLoading()"
+                [attr.aria-label]="preset.label"
+              >
+                <img [src]="preset.thumbUrl" [alt]="preset.label" class="preset-thumb" />
+                <span class="preset-label">{{ preset.label }}</span>
+              </button>
+            }
+          </div>
+          <div class="presets-divider">
+            <span>or upload custom</span>
+          </div>
+        </div>
+
         <!-- Drop Zone -->
         <div
           class="drop-zone"
@@ -267,6 +301,67 @@ function getExtension(mimeType: string): string {
       border-radius: 999px;
       font-weight: 500;
     }
+
+    .presets-section { margin-bottom: 16px; }
+
+    .presets-label {
+      font-size: 0.875rem;
+      color: var(--mat-sys-on-surface-variant);
+      margin: 0 0 12px;
+    }
+
+    .presets-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .preset-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      padding: 8px;
+      border: 2px solid var(--mat-sys-outline-variant);
+      border-radius: 10px;
+      background: var(--mat-sys-surface);
+      cursor: pointer;
+      transition: border-color 0.2s;
+
+      &:hover:not([disabled]) {
+        border-color: var(--mat-sys-primary);
+      }
+
+      &[disabled] { opacity: 0.5; cursor: not-allowed; }
+    }
+
+    .preset-thumb {
+      width: 100%;
+      aspect-ratio: 4/3;
+      object-fit: cover;
+      border-radius: 6px;
+    }
+
+    .preset-label {
+      font-size: 0.75rem;
+      color: var(--mat-sys-on-surface-variant);
+    }
+
+    .presets-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 16px 0 8px;
+      color: var(--mat-sys-on-surface-variant);
+      font-size: 0.8rem;
+
+      &::before, &::after {
+        content: '';
+        flex: 1;
+        height: 1px;
+        background: var(--mat-sys-outline-variant);
+      }
+    }
   `],
 })
 export class TemplateUploadComponent implements OnInit {
@@ -282,6 +377,8 @@ export class TemplateUploadComponent implements OnInit {
   readonly isUploading = signal(false);
   readonly uploadProgress = signal(0);
   readonly previewUrl = signal<string | null>(null);
+  readonly presets = signal<PresetTemplate[]>(PRESET_TEMPLATES);
+  readonly presetLoading = signal(false);
 
   ngOnInit(): void {
     // When navigating back to a project that already has a template, load
@@ -326,6 +423,22 @@ export class TemplateUploadComponent implements OnInit {
   onReplaceClick(): void {
     this.previewUrl.set(null);
     this.templateUploaded.emit(null as unknown as TemplateMetadata);
+  }
+
+  async selectPreset(preset: PresetTemplate): Promise<void> {
+    if (this.isUploading() || this.presetLoading()) return;
+    this.presetLoading.set(true);
+    try {
+      const response = await fetch(preset.thumbUrl);
+      const blob = await response.blob();
+      this.previewUrl.set(URL.createObjectURL(blob));
+      const file = new File([blob], `preset-template-${preset.id}.png`, { type: 'image/png' });
+      await this.uploadFile(file);
+    } catch {
+      this.snackBar.open('Failed to load preset template.', 'Dismiss', { duration: 4000 });
+    } finally {
+      this.presetLoading.set(false);
+    }
   }
 
   // ─── Upload Flow ───────────────────────────────────────────────────────────

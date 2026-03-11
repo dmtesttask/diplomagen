@@ -1,8 +1,10 @@
 import {
   Component,
+  EventEmitter,
   Input,
   OnInit,
   OnChanges,
+  Output,
   SimpleChanges,
   inject,
   signal,
@@ -183,6 +185,7 @@ import type { Project, GenerationJob } from '../../../../../../shared/src';
 })
 export class GenerationPanelComponent implements OnInit, OnChanges {
   @Input({ required: true }) project!: Project;
+  @Output() generationDone = new EventEmitter<void>();
 
   private readonly generationService = inject(GenerationService);
   private readonly dialog = inject(MatDialog);
@@ -288,9 +291,13 @@ export class GenerationPanelComponent implements OnInit, OnChanges {
           },
         );
 
-        dialogRef.afterClosed().subscribe(() => {
-          // Refresh last job status after dialog closes
+        dialogRef.afterClosed().subscribe((result: string | undefined) => {
           this.loadLastJob();
+          // Only emit (and redirect) when the job completed successfully.
+          // If the dialog was closed on error or mid-generation, do NOT redirect.
+          if (result === 'done') {
+            this.generationDone.emit();
+          }
         });
       },
       error: (err: { error?: { error?: { message?: string; code?: string } } }) => {

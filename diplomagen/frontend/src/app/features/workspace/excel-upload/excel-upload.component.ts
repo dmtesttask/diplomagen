@@ -86,6 +86,12 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
             </table>
           </div>
         </div>
+        <div class="proceed-row">
+          <button mat-raised-button color="primary" (click)="proceedToEditor.emit()">
+            <mat-icon>edit</mat-icon>
+            Proceed to Editor
+          </button>
+        </div>
       }
     </div>
   `,
@@ -170,6 +176,12 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
       display: inline-block;
       margin-right: 8px;
     }
+
+    .proceed-row {
+      margin-top: 20px;
+      display: flex;
+      justify-content: flex-end;
+    }
   `],
 })
 export class ExcelUploadComponent implements OnChanges {
@@ -177,6 +189,7 @@ export class ExcelUploadComponent implements OnChanges {
   @Input() existingColumns: string[] = [];
   @Input() existingTotalRows: number | null = null;
   @Output() excelUploaded = new EventEmitter<ExcelUploadResult>();
+  @Output() proceedToEditor = new EventEmitter<void>();
 
   private readonly projectService = inject(ProjectService);
   private readonly snackBar = inject(MatSnackBar);
